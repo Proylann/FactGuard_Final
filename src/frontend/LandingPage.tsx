@@ -1,6 +1,7 @@
-import type { FC, ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import type { FC } from 'react';
+import { motion, useScroll, useTransform } from 'framer-motion';
 import logo from '../assets/Logo.png';
+import heroImage from '../assets/image.png';
 
 type IconProp = FC<{ className?: string }>;
 
@@ -16,311 +17,422 @@ const ShieldIcon: IconProp = ({ className = '' }) => (
   </svg>
 );
 
-const CheckIcon: IconProp = ({ className = '' }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-  </svg>
-);
+const reveal = {
+  hidden: { opacity: 0, y: 36 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.56, ease: [0.22, 1, 0.36, 1] as const },
+  },
+};
 
-const NavLink: FC<{ href: string; children: ReactNode }> = ({ href, children }) => (
-  <a href={href} className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500 hover:text-slate-900 transition-colors">
-    {children}
-  </a>
-);
-
-const WireCard: FC<{ title: string; text: string }> = ({ title, text }) => (
-  <div className="rounded-2xl border border-slate-300/70 bg-white/80 p-5 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.7)]">
-    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{title}</p>
-    <p className="mt-2 text-sm leading-6 text-slate-700">{text}</p>
-  </div>
-);
-
-const HeroSignalSvg: FC = () => (
-  <svg viewBox="0 0 480 300" className="h-56 w-full md:h-64" role="img" aria-label="Animated threat signal wireframe">
-    <defs>
-      <linearGradient id="gridStroke" x1="0%" x2="100%" y1="0%" y2="0%">
-        <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.2" />
-        <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.55" />
-      </linearGradient>
-      <linearGradient id="scanFill" x1="0%" x2="100%" y1="0%" y2="0%">
-        <stop offset="0%" stopColor="#34d399" stopOpacity="0" />
-        <stop offset="50%" stopColor="#34d399" stopOpacity="0.7" />
-        <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
-      </linearGradient>
-    </defs>
-    <rect x="8" y="8" width="464" height="284" rx="18" fill="#0f172a" />
-    <rect x="8" y="8" width="464" height="284" rx="18" fill="none" stroke="url(#gridStroke)" strokeWidth="1.5" />
-    {Array.from({ length: 8 }).map((_, i) => (
-      <line key={`h-${i}`} x1="32" y1={40 + i * 30} x2="448" y2={40 + i * 30} stroke="#334155" strokeWidth="1" />
-    ))}
-    {Array.from({ length: 10 }).map((_, i) => (
-      <line key={`v-${i}`} x1={42 + i * 40} y1="30" x2={42 + i * 40} y2="270" stroke="#1e293b" strokeWidth="1" />
-    ))}
-    <path
-      d="M36 208 C90 190, 124 126, 168 144 C206 159, 220 220, 272 210 C316 201, 344 86, 388 96 C410 101, 430 122, 446 134"
-      fill="none"
-      stroke="#38bdf8"
-      strokeWidth="4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="hero-signal-path"
-    />
-    <path
-      d="M36 218 C92 206, 118 176, 162 182 C200 187, 230 240, 270 236 C320 232, 348 132, 398 146 C416 151, 432 164, 446 176"
-      fill="none"
-      stroke="#22d3ee"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeDasharray="7 11"
-      className="hero-signal-path-slow"
-    />
-    <rect x="24" y="24" width="432" height="252" fill="url(#scanFill)" className="hero-scan-bar" />
-    <circle cx="388" cy="96" r="8" fill="#f43f5e" className="hero-pulse-danger" />
-    <circle cx="168" cy="144" r="7" fill="#f59e0b" className="hero-pulse-warning" />
-    <circle cx="272" cy="210" r="6" fill="#34d399" className="hero-pulse-safe" />
-    <text x="30" y="44" fill="#e2e8f0" fontSize="12" fontWeight="700" letterSpacing="1.3">
-      LIVE SIGNAL MAP
-    </text>
-  </svg>
-);
+const stagger = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.12,
+      delayChildren: 0.08,
+    },
+  },
+};
 
 const LandingPage: FC<{ onEnter?: () => void }> = ({ onEnter }) => {
+  const { scrollYProgress } = useScroll();
+  const heroY = useTransform(scrollYProgress, [0, 0.18], [0, -110]);
+  const orbY = useTransform(scrollYProgress, [0, 0.45], [0, -220]);
+  const uiY = useTransform(scrollYProgress, [0, 0.28], [0, -65]);
+
   const handleStartAnalyzing = () => {
-    if (onEnter) {
+    if (onEnter && typeof onEnter === 'function') {
       onEnter();
       return;
     }
-    alert('Authentication flow is not connected in this mode.');
+    alert('Login functionality will be implemented next!');
   };
 
+  const timeline = [
+    {
+      title: 'Hyper-Realistic Deepfakes',
+      desc: 'AI can now generate convincing fake videos and audio that bypass human detection, enabling fraud, harassment, and political manipulation.',
+    },
+    {
+      title: 'Erosion of Trust',
+      desc: "As synthetic media proliferates, society faces a reality-apathy crisis where people distrust authentic information and evidence.",
+    },
+    {
+      title: 'Weaponized Misinformation',
+      desc: 'Bad actors deploy AI-generated content to destabilize markets, incite violence, and undermine democratic institutions at unprecedented scale.',
+    },
+  ];
+
+  const featureFlow = [
+    {
+      title: 'Deepfake Detection Engine',
+      desc: 'Analyzes micro-expressions, lighting inconsistencies, and digital artifacts invisible to the human eye.',
+      stat: '99.2%',
+      meta: 'Detection Accuracy',
+    },
+    {
+      title: 'Contextual Fact Verification',
+      desc: 'Cross-references claims against trusted sources using semantic analysis and real-time news aggregation.',
+      stat: '1.2s',
+      meta: 'Average Analysis Time',
+    },
+    {
+      title: 'Explainable AI Reporting',
+      desc: 'Returns confidence scoring, evidence highlights, and transparent reasoning you can act on.',
+      stat: '47M+',
+      meta: 'Media Analyzed',
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#f7fbff] text-slate-900">
+    <div
+      className="min-h-screen overflow-x-clip bg-[#f6f6f4] text-[#111110] selection:bg-[#dfe5ff]"
+      style={{ fontFamily: 'Inter, Satoshi, General Sans, ui-sans-serif, system-ui, sans-serif' }}
+    >
       <style>{`
-        @keyframes signalMove {
-          0% { stroke-dashoffset: 230; }
-          100% { stroke-dashoffset: 0; }
+        :root {
+          --line: rgba(17, 17, 16, 0.12);
+          --soft: #636363;
+          --accent: #7a8fff;
+          --accent-soft: rgba(122, 143, 255, 0.25);
+          --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
         }
-        @keyframes signalMoveSlow {
-          0% { stroke-dashoffset: 400; }
-          100% { stroke-dashoffset: 0; }
+        @keyframes driftGradient {
+          0% { transform: translate3d(-8%, -6%, 0) scale(1); }
+          50% { transform: translate3d(6%, 5%, 0) scale(1.08); }
+          100% { transform: translate3d(-8%, -6%, 0) scale(1); }
         }
-        @keyframes scanSweep {
-          0% { transform: translateX(-84%); }
-          100% { transform: translateX(84%); }
+        @keyframes pulseRing {
+          0% { transform: scale(0.95); opacity: 0.35; }
+          50% { transform: scale(1.05); opacity: 0.7; }
+          100% { transform: scale(0.95); opacity: 0.35; }
         }
-        @keyframes pulseDanger {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.45; transform: scale(1.35); }
+        @keyframes floatCard {
+          0% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
+          100% { transform: translateY(0px); }
         }
-        @keyframes pulseWarning {
-          0%, 100% { opacity: 0.85; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.2); }
+        .grain {
+          background-image: radial-gradient(circle at 1px 1px, rgba(17,17,16,0.09) 1px, transparent 0);
+          background-size: 28px 28px;
         }
-        .hero-signal-path {
-          stroke-dasharray: 11 9;
-          animation: signalMove 4.8s linear infinite;
-        }
-        .hero-signal-path-slow {
-          animation: signalMoveSlow 7.2s linear infinite;
-        }
-        .hero-scan-bar {
-          animation: scanSweep 3.6s ease-in-out infinite alternate;
-        }
-        .hero-pulse-danger {
-          transform-origin: center;
-          animation: pulseDanger 1.6s ease-in-out infinite;
-        }
-        .hero-pulse-warning {
-          transform-origin: center;
-          animation: pulseWarning 2.1s ease-in-out infinite;
-        }
-        .hero-pulse-safe {
-          transform-origin: center;
-          animation: pulseWarning 2.7s ease-in-out infinite;
+        .premium-transition {
+          transition: all 500ms var(--ease-premium);
         }
       `}</style>
 
-      <nav className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2">
-            <img src={logo} alt="FactGuard logo" className="h-9 w-9 rounded-md object-cover" />
-            <p className="text-xl font-black tracking-tight">
-              Fact<span className="text-sky-700">Guard</span>
-            </p>
+      <nav className="fixed inset-x-0 top-0 z-50 border-b border-[var(--line)] bg-[#f6f6f4]/75 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-5 lg:px-8">
+          <a href="#" className="group flex items-center gap-2">
+            <img src={logo} alt="FactGuard logo" className="h-10 w-10 rounded-full border border-black/10 object-cover" />
+            <span className="text-xl font-black tracking-tight">FactGuard</span>
+          </a>
+          <div className="hidden items-center gap-8 text-xs font-semibold uppercase tracking-[0.18em] text-[#3e3e3d] md:flex">
+            <a href="#threat" className="premium-transition hover:text-black">Threat</a>
+            <a href="#experience" className="premium-transition hover:text-black">Experience</a>
+            <a href="#technology" className="premium-transition hover:text-black">Technology</a>
+            <a href="#impact" className="premium-transition hover:text-black">Impact</a>
           </div>
-          <div className="hidden items-center gap-7 md:flex">
-            <NavLink href="#wireframe">Wireframe</NavLink>
-            <NavLink href="#copy">Copy Blocks</NavLink>
-            <NavLink href="#prototype">Dashboard</NavLink>
-          </div>
-          <button
-            onClick={handleStartAnalyzing}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-900 hover:text-slate-900"
-          >
-            Enter App
-          </button>
         </div>
       </nav>
 
-      <header className="relative overflow-hidden px-4 pb-16 pt-12 sm:px-6 lg:px-8">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(14,165,233,0.17),transparent_36%),radial-gradient(circle_at_80%_25%,rgba(34,197,94,0.15),transparent_28%)]" />
-        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55 }}>
-            <p className="inline-flex rounded-full border border-slate-300/70 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
-              Wireframe + Conversion Copy
-            </p>
-            <h1 className="mt-5 max-w-xl text-4xl font-extrabold leading-tight sm:text-5xl">
-              Detect synthetic media in minutes before it damages trust.
-            </h1>
-            <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
-              FactGuard screens video, audio, and breaking claims in one workflow so teams can publish with confidence, move faster, and reduce costly
-              false alarms.
-            </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+      <header className="relative isolate px-5 pb-24 pt-32 lg:px-8 lg:pt-40">
+        <motion.div style={{ y: orbY }} className="pointer-events-none absolute -left-24 top-24 h-72 w-72 rounded-full bg-[#ffffff] blur-3xl" />
+        <motion.div
+          style={{ y: orbY }}
+          className="pointer-events-none absolute -right-8 top-10 h-96 w-96 rounded-full bg-[var(--accent-soft)] blur-3xl"
+        />
+        <div className="pointer-events-none absolute inset-0 opacity-70">
+          <div className="absolute left-1/4 top-24 h-[36rem] w-[36rem] rounded-full bg-gradient-to-br from-[#fdfdfd] via-[#ececec] to-[#d9defb] blur-3xl animate-[driftGradient_14s_ease-in-out_infinite]" />
+        </div>
+
+        <div className="mx-auto grid w-full max-w-7xl gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+          <motion.div
+            style={{ y: heroY }}
+            variants={stagger}
+            initial="hidden"
+            animate="show"
+            className="relative z-10"
+          >
+            <motion.div
+              variants={reveal}
+              className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/80 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[#444]"
+            >
+              <ShieldIcon className="h-4 w-4 text-[#5a6fff]" /> AI-Powered Verification System
+            </motion.div>
+            <motion.h1
+              variants={reveal}
+              className="mt-8 max-w-4xl text-5xl font-black uppercase leading-[0.94] tracking-[-0.03em] sm:text-7xl lg:text-[6.8rem]"
+            >
+              Defend Truth
+              <br />
+              Before It
+              <br />
+              Fractures.
+            </motion.h1>
+            <motion.p variants={reveal} className="mt-7 max-w-xl text-base leading-relaxed text-[var(--soft)] sm:text-lg">
+              FactGuard combines forensic AI and contextual verification to detect deepfakes and validate news in real time. Designed to rebuild trust where it matters most.
+            </motion.p>
+            <motion.div variants={reveal} className="mt-10 flex flex-wrap items-center gap-4">
               <button
                 onClick={handleStartAnalyzing}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+                className="group inline-flex items-center gap-2 rounded-full border border-black bg-black px-7 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-white premium-transition hover:-translate-y-0.5 hover:shadow-[0_12px_35px_rgba(17,17,16,0.2)]"
               >
-                Start Free Verification
-                <ArrowRightIcon className="h-4 w-4" />
+                Start Free Analysis
+                <ArrowRightIcon className="h-4 w-4 premium-transition group-hover:translate-x-1" />
               </button>
               <a
-                href="#prototype"
-                className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-900"
+                href="#experience"
+                className="rounded-full border border-black/15 bg-white/70 px-7 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#252525] premium-transition hover:border-black/40 hover:bg-white"
               >
-                View Dashboard Prototype
+                Explore System
               </a>
-            </div>
-            <div className="mt-8 grid max-w-lg grid-cols-3 gap-3 text-sm">
-              <div className="rounded-xl border border-slate-300/70 bg-white p-4">
-                <p className="text-2xl font-extrabold text-slate-900">96.8%</p>
-                <p className="mt-1 text-slate-500">Precision</p>
-              </div>
-              <div className="rounded-xl border border-slate-300/70 bg-white p-4">
-                <p className="text-2xl font-extrabold text-slate-900">84 sec</p>
-                <p className="mt-1 text-slate-500">Median scan</p>
-              </div>
-              <div className="rounded-xl border border-slate-300/70 bg-white p-4">
-                <p className="text-2xl font-extrabold text-slate-900">24/7</p>
-                <p className="mt-1 text-slate-500">Monitoring</p>
-              </div>
-            </div>
+            </motion.div>
+
+            <motion.div variants={stagger} className="mt-12 flex max-w-md gap-4" initial="hidden" animate="show">
+              {[
+                { n: '99.2%', label: 'Detection Accuracy' },
+                { n: '1.2s', label: 'Avg. Analysis Time' },
+              ].map((metric) => (
+                <motion.div
+                  variants={reveal}
+                  key={metric.label}
+                  className="flex-1 rounded-2xl border border-black/10 bg-white/75 p-4 backdrop-blur-sm premium-transition hover:-translate-y-1 hover:border-black/20"
+                >
+                  <p className="text-2xl font-black tracking-tight">{metric.n}</p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.15em] text-[#5a5a58]">{metric.label}</p>
+                </motion.div>
+              ))}
+            </motion.div>
           </motion.div>
 
-          <motion.div
-            id="prototype"
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="rounded-3xl border border-slate-300/70 bg-white p-4 shadow-[0_25px_70px_-35px_rgba(15,23,42,0.7)] sm:p-5"
-          >
-            <div className="rounded-2xl border border-slate-300 bg-slate-950 p-3">
-              <div className="mb-3 flex items-center justify-between px-2 text-xs font-semibold text-slate-300">
-                <span>Threat Feed Console</span>
-                <span className="rounded-md border border-emerald-600/60 px-2 py-1 text-emerald-400">Live</span>
+          <motion.div style={{ y: uiY }} className="relative mx-auto w-full max-w-2xl">
+            <motion.div
+              whileHover={{ y: -6, scale: 1.01 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              className="relative overflow-hidden rounded-[2rem] border border-black/10 bg-white/85 p-3 shadow-[0_35px_80px_rgba(17,17,16,0.12)] backdrop-blur-xl"
+            >
+              <img src={heroImage} alt="FactGuard analysis interface" className="h-auto w-full rounded-[1.3rem] border border-black/10 object-contain" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/30 via-transparent to-white/15" />
+              <div className="absolute right-4 top-4 rounded-full border border-black/15 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#373737]">
+                Secure Mode Active
               </div>
-              <HeroSignalSvg />
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-300 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Current Alert</p>
-                <p className="mt-2 text-sm font-semibold text-slate-800">Possible synthetic segment at 01:24</p>
-                <div className="mt-3 h-2 rounded-full bg-slate-100">
-                  <div className="h-2 w-2/3 rounded-full bg-amber-400" />
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-300 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Verdict Confidence</p>
-                <p className="mt-2 text-2xl font-extrabold text-slate-900">91%</p>
-                <p className="text-xs text-slate-500">Needs editor confirmation</p>
-              </div>
-            </div>
+            </motion.div>
+
+            <motion.div
+              animate={{ y: [0, -11, 0] }}
+              transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute -left-5 bottom-12 w-44 rounded-2xl border border-black/10 bg-white/90 p-4 shadow-xl"
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#777]">Authenticity</p>
+              <p className="mt-1 text-xl font-black">99.3%</p>
+            </motion.div>
+            <motion.div
+              animate={{ y: [0, -7, 0] }}
+              transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
+              className="absolute -right-5 top-10 w-48 rounded-2xl border border-black/10 bg-white/90 p-4 shadow-xl"
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#777]">Processing</p>
+              <p className="mt-1 text-xl font-black">Real-Time</p>
+            </motion.div>
+            <div className="pointer-events-none absolute -right-8 -top-6 h-20 w-20 rounded-full bg-[var(--accent-soft)] blur-2xl animate-[pulseRing_5s_ease-in-out_infinite]" />
           </motion.div>
         </div>
       </header>
 
-      <section id="wireframe" className="px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-7xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Landing Page Wireframe</p>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Built to move visitors from awareness to action.</h2>
-          <div className="mt-7 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <WireCard title="1. Hook" text="High-stakes headline + immediate CTA above the fold to capture urgency." />
-            <WireCard title="2. Pain" text="Short narrative that quantifies risk of deepfakes and delayed verification." />
-            <WireCard title="3. Proof" text="Dashboard screenshot pattern with confidence scores and explainable output." />
-            <WireCard title="4. Offer" text="Risk-free trial message with clear next step and zero-friction onboarding." />
-          </div>
-        </div>
+      <section id="threat" className="relative px-5 py-28 lg:px-8">
+        <div className="grain absolute inset-0 opacity-[0.22]" />
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, amount: 0.25 }}
+          className="relative mx-auto w-full max-w-7xl"
+        >
+          <motion.p variants={reveal} className="text-xs font-bold uppercase tracking-[0.2em] text-[#666]">
+            The Threat
+          </motion.p>
+          <motion.h2 variants={reveal} className="mt-4 max-w-4xl text-4xl font-black uppercase leading-[0.95] tracking-[-0.02em] sm:text-6xl">
+            Synthetic Deception Is Scaling Faster Than Public Defenses.
+          </motion.h2>
+          <motion.p variants={reveal} className="mt-6 max-w-2xl text-lg text-[#575755]">
+            Deepfake incidents surged by 900% since 2023, forcing every institution to verify before sharing.
+          </motion.p>
+
+          <motion.div variants={stagger} className="mt-14 space-y-7">
+            {timeline.map((item, i) => (
+              <motion.article
+                variants={reveal}
+                key={item.title}
+                className="group grid gap-5 border-t border-black/10 pt-7 md:grid-cols-[95px_1fr_180px]"
+              >
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#7a7a7a]">{`0${i + 1}`}</p>
+                <h3 className="text-2xl font-extrabold tracking-tight">{item.title}</h3>
+                <p className="text-sm leading-relaxed text-[#595957] md:text-right">{item.desc}</p>
+              </motion.article>
+            ))}
+          </motion.div>
+        </motion.div>
       </section>
 
-      <section id="copy" className="px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto grid w-full max-w-7xl gap-5 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-300/70 bg-white p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Conversion Copy</p>
-            <h3 className="mt-2 text-xl font-extrabold">Primary message stack</h3>
-            <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
-              <li>
-                <span className="font-semibold text-slate-900">Headline:</span> Verify what is real before your audience decides for you.
-              </li>
-              <li>
-                <span className="font-semibold text-slate-900">Subheadline:</span> One platform to detect manipulated media, fact-check claims, and publish findings with
-                confidence.
-              </li>
-              <li>
-                <span className="font-semibold text-slate-900">Primary CTA:</span> Start Free Verification.
-              </li>
-              <li>
-                <span className="font-semibold text-slate-900">Secondary CTA:</span> See Detection Workflow.
-              </li>
-            </ul>
-          </div>
-          <div className="rounded-2xl border border-slate-300/70 bg-white p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Trust and urgency copy</p>
-            <h3 className="mt-2 text-xl font-extrabold">Supporting blocks</h3>
-            <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
-              <li>
-                <span className="font-semibold text-slate-900">Proof line:</span> Analysts reduced verification time by 63% in the first month.
-              </li>
-              <li>
-                <span className="font-semibold text-slate-900">Risk line:</span> Every minute unverified media stays live increases reputational fallout.
-              </li>
-              <li>
-                <span className="font-semibold text-slate-900">Offer line:</span> 10 free scans, no credit card, full evidence reports included.
-              </li>
-              <li>
-                <span className="font-semibold text-slate-900">Footer CTA:</span> Deploy FactGuard before the next breaking story.
-              </li>
-            </ul>
-          </div>
-        </div>
-      </section>
+      <section id="experience" className="px-5 py-28 lg:px-8">
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, amount: 0.25 }}
+          className="mx-auto w-full max-w-7xl"
+        >
+          <motion.p variants={reveal} className="text-xs font-bold uppercase tracking-[0.2em] text-[#666]">
+            Scroll Experience
+          </motion.p>
+          <motion.h2 variants={reveal} className="mt-4 max-w-5xl text-4xl font-black uppercase leading-[0.95] tracking-[-0.02em] sm:text-6xl">
+            Verification Engine In Motion.
+          </motion.h2>
 
-      <section className="px-4 pb-20 pt-8 sm:px-6 lg:px-8">
-        <div className="mx-auto flex w-full max-w-7xl flex-col items-start justify-between gap-6 rounded-3xl border border-slate-300/70 bg-slate-900 p-8 text-slate-100 lg:flex-row lg:items-center">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">Ready to launch</p>
-            <h3 className="mt-2 text-2xl font-extrabold">Turn this prototype into your live onboarding funnel.</h3>
-            <p className="mt-2 text-sm text-slate-300">Keep the wireframe structure, swap your live metrics, and connect trial signup in one sprint.</p>
-          </div>
-          <button
-            onClick={handleStartAnalyzing}
-            className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+          <motion.div
+            variants={reveal}
+            className="mt-12 flex snap-x snap-mandatory gap-6 overflow-x-auto pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            Launch Free Trial
-            <CheckIcon className="h-4 w-4" />
-          </button>
+            {[
+              'Upload video, audio, image, or article URL through a secure portal.',
+              'Dual AI engines run deepfake analysis and contextual fact verification in parallel.',
+              'Receive explainable evidence with confidence scoring and distribution guidance.',
+            ].map((text, i) => (
+              <motion.div
+                whileHover={{ y: -5, scale: 1.01 }}
+                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                key={text}
+                className="relative min-w-[78vw] snap-center rounded-[2rem] border border-black/10 bg-white/85 p-8 shadow-[0_20px_50px_rgba(17,17,16,0.08)] md:min-w-[52vw]"
+              >
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#666]">{`Step 0${i + 1}`}</p>
+                <p className="mt-5 max-w-md text-2xl font-semibold leading-tight">{text}</p>
+                <div className="absolute bottom-8 right-8 h-16 w-16 rounded-full border border-black/10 bg-gradient-to-br from-[#fff] to-[#edf0ff]" />
+              </motion.div>
+            ))}
+          </motion.div>
+        </motion.div>
+      </section>
+
+      <section id="impact" className="relative overflow-hidden px-5 py-32 lg:px-8">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#f2f2f0] via-[#ececeb] to-[#f8f8f7]" />
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, amount: 0.25 }}
+          className="relative mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.1fr_0.9fr]"
+        >
+          <motion.div variants={reveal} className="relative">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#666]">Visual Storytelling</p>
+            <h2 className="mt-5 text-5xl font-black uppercase leading-[0.92] tracking-[-0.03em] sm:text-7xl">
+              Trust Is
+              <br />
+              A Shared
+              <br />
+              Interface.
+            </h2>
+            <p className="mt-8 max-w-xl text-lg text-[#575755]">
+              FactGuard does not just detect fake media. It restores confidence in public information flows.
+            </p>
+          </motion.div>
+
+          <motion.div variants={reveal} className="relative">
+            <div className="absolute -left-8 top-1/2 hidden h-48 w-48 -translate-y-1/2 rounded-full bg-[var(--accent-soft)] blur-3xl lg:block" />
+            <div className="relative rounded-[2.2rem] border border-black/10 bg-white/80 p-5 shadow-[0_25px_60px_rgba(17,17,16,0.09)]">
+              <img src={heroImage} alt="FactGuard immersive preview" className="h-auto w-full rounded-[1.4rem] border border-black/10 object-cover" />
+              <div className="absolute left-8 top-8 rounded-2xl border border-black/10 bg-white/85 px-4 py-3 text-sm font-semibold shadow-lg">
+                Explainable reasoning
+              </div>
+              <div className="absolute bottom-8 right-8 rounded-2xl border border-black/10 bg-white/85 px-4 py-3 text-sm font-semibold shadow-lg">
+                Evidence over noise
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </section>
+
+      <section id="technology" className="px-5 py-28 lg:px-8">
+        <div className="mx-auto grid w-full max-w-7xl gap-14 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="h-fit lg:sticky lg:top-24">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#666]">Feature Highlights</p>
+            <h2 className="mt-4 text-4xl font-black uppercase leading-[0.95] tracking-[-0.02em] sm:text-6xl">
+              Dual-Layer
+              <br />
+              Verification
+              <br />
+              Technology.
+            </h2>
+          </div>
+
+          <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.15 }} className="space-y-12">
+            {featureFlow.map((item, index) => (
+              <motion.article
+                variants={reveal}
+                key={item.title}
+                className={`group grid gap-6 rounded-[2rem] border border-black/10 bg-white/85 p-7 premium-transition hover:-translate-y-1 hover:shadow-xl sm:p-10 ${
+                  index % 2 ? 'lg:grid-cols-[1fr_0.8fr]' : 'lg:grid-cols-[0.8fr_1fr]'
+                }`}
+              >
+                <div className={index % 2 ? 'lg:order-2' : ''}>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#666]">{`Layer 0${index + 1}`}</p>
+                  <h3 className="mt-4 text-3xl font-extrabold leading-tight tracking-tight">{item.title}</h3>
+                  <p className="mt-4 max-w-lg text-[#5a5a58]">{item.desc}</p>
+                </div>
+                <div className={`${index % 2 ? 'lg:order-1' : ''} relative rounded-[1.5rem] border border-black/10 bg-gradient-to-br from-[#fafafa] to-[#eceef8] p-7`}>
+                  <div className="absolute right-5 top-5 h-3 w-3 rounded-full bg-[var(--accent)]" />
+                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#6b6b6b]">{item.meta}</p>
+                  <p className="mt-4 text-5xl font-black tracking-tight">{item.stat}</p>
+                  <div className="mt-8 h-2 w-full overflow-hidden rounded-full bg-black/10">
+                    <motion.div
+                      initial={{ width: '22%' }}
+                      whileInView={{ width: '88%' }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                      className="h-full rounded-full bg-gradient-to-r from-[#111] to-[#7a8fff]"
+                    />
+                  </div>
+                </div>
+              </motion.article>
+            ))}
+          </motion.div>
         </div>
       </section>
 
-      <footer className="border-t border-slate-200 bg-white px-4 py-7 sm:px-6 lg:px-8">
-        <div className="mx-auto flex w-full max-w-7xl flex-col items-start justify-between gap-4 text-sm text-slate-500 md:flex-row md:items-center">
-          <div className="flex items-center gap-2">
-            <ShieldIcon className="h-4 w-4 text-slate-700" />
-            <span>FactGuard</span>
-          </div>
-          <p>Built for media teams, risk analysts, and trust and safety workflows.</p>
-        </div>
-      </footer>
+      <section className="relative px-5 pb-28 pt-10 lg:px-8">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#ececeb] via-[#f6f6f4] to-[#e8ebfb]" />
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, amount: 0.25 }}
+          className="relative mx-auto w-full max-w-5xl rounded-[2.4rem] border border-black/10 bg-white/70 px-8 py-20 text-center shadow-[0_22px_60px_rgba(17,17,16,0.1)] backdrop-blur-sm sm:px-14"
+        >
+          <div className="pointer-events-none absolute left-1/2 top-0 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--accent-soft)] blur-3xl" />
+          <motion.p variants={reveal} className="text-xs font-bold uppercase tracking-[0.2em] text-[#666]">
+            Final Call
+          </motion.p>
+          <motion.h2 variants={reveal} className="mt-6 text-4xl font-black uppercase leading-[0.95] tracking-[-0.02em] sm:text-6xl">
+            Verify Before
+            <br />
+            You Amplify.
+          </motion.h2>
+          <motion.p variants={reveal} className="mx-auto mt-6 max-w-2xl text-lg text-[#575755]">
+            One click starts your first free analysis and returns a full explainable authenticity report.
+          </motion.p>
+          <motion.div variants={reveal} className="mt-10">
+            <button
+              onClick={handleStartAnalyzing}
+              className="group inline-flex items-center gap-2 rounded-full border border-black bg-black px-9 py-4 text-sm font-semibold uppercase tracking-[0.13em] text-white premium-transition hover:-translate-y-0.5 hover:shadow-[0_12px_35px_rgba(17,17,16,0.22)]"
+            >
+              Start Your Free Analysis
+              <ArrowRightIcon className="h-4 w-4 premium-transition group-hover:translate-x-1" />
+            </button>
+          </motion.div>
+        </motion.div>
+      </section>
     </div>
   );
 };
