@@ -1,8 +1,18 @@
-export const getAuthToken = (): string => {
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
+export const getStoredSession = (): any | null => {
   try {
     const sessionRaw = localStorage.getItem('fg_session');
-    if (!sessionRaw) return '';
-    const session: any = JSON.parse(sessionRaw);
+    return sessionRaw ? JSON.parse(sessionRaw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const getAuthToken = (): string => {
+  try {
+    const session: any = getStoredSession();
+    if (!session) return '';
     let token: any = session?.access_token || session?.token || session?.session?.access_token || '';
     if (token && typeof token === 'object') token = token.access_token || token.token || '';
     return typeof token === 'string' ? token : '';
@@ -11,10 +21,10 @@ export const getAuthToken = (): string => {
   }
 };
 
-export const downloadReport = async (type: 'synthetic' | 'authentic') => {
+export const downloadReport = async (type: 'synthetic' | 'authentic'): Promise<boolean> => {
   try {
     const token = getAuthToken();
-    const res = await fetch(`http://127.0.0.1:8000/api/reports/download?report_type=${type}`, {
+    const res = await fetch(`${API_BASE}/api/reports/download?report_type=${type}`, {
       method: 'GET',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -30,7 +40,9 @@ export const downloadReport = async (type: 'synthetic' | 'authentic') => {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    return true;
   } catch (err) {
     alert(`Download failed: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
   }
 };

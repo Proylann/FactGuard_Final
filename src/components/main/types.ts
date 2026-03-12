@@ -3,6 +3,7 @@ export interface Log {
   msg: string;
   type: 'info' | 'success' | 'error';
   category?: 'analysis' | 'download' | 'auth';
+  timestamp?: string;
 }
 
 export interface ScanResult {
@@ -44,6 +45,53 @@ export interface ReportsData {
   total_scans: number;
   synthetic_avg_confidence: number;
   report_date: string;
+}
+
+export interface AdminUser {
+  user_id: number;
+  username: string;
+  email: string;
+  total_scans: number;
+  flagged_scans: number;
+}
+
+export interface AdminScan {
+  scan_id: number;
+  user_id: number;
+  username: string;
+  email: string;
+  filename: string;
+  media_type: string;
+  confidence_score: number;
+  is_synthetic: boolean;
+  artifacts: string[];
+  created_at: string;
+}
+
+export interface AdminLog {
+  log_id: number;
+  timestamp: string;
+  action: string;
+  message: string;
+  type: 'info' | 'success' | 'error';
+  ip_address?: string | null;
+  user_id?: number | null;
+  username?: string | null;
+  email?: string | null;
+}
+
+export interface AdminOverview {
+  total_users: number;
+  total_scans: number;
+  synthetic_scans: number;
+  authentic_scans: number;
+  total_logs: number;
+  recent_users: Array<{
+    user_id: number;
+    username: string;
+    email: string;
+  }>;
+  recent_scans: AdminScan[];
 }
 
 export type ViewId = 'dashboard' | 'analyze' | 'history' | 'reports' | 'docs' | 'settings';

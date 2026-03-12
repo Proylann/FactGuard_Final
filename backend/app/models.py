@@ -8,6 +8,10 @@ class User(Base):
     username = Column(String(50), nullable=False)
     email = Column(String(100), unique=True, nullable=False)
     password = Column(String, nullable=False)
+    role = Column(String(20), nullable=False, default="user")
+    is_active = Column(Boolean, nullable=False, default=True)
+    last_login = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class ScanResult(Base):
     """Stores the output of AI model scans shown in Detection Tools."""
@@ -19,6 +23,7 @@ class ScanResult(Base):
     media_type = Column(String)  # 'image', 'video', or 'text'
     confidence_score = Column(Float, nullable=False)
     is_synthetic = Column(Boolean, default=False)
+    review_status = Column(String(20), nullable=False, default="pending")
     # Flexible field to store anomalies like ["Inconsistent Lighting", "Audio Desync"]
     artifacts = Column(JSON) 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

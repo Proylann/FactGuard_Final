@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Auth from './frontend/Auth';
+import AdminPanel from './frontend/AdminPanel';
 import LandingPage from './frontend/LandingPage';
 import Main from './frontend/Main';
 import './App.css';
@@ -7,6 +8,17 @@ import './App.css';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function App() {
+  const [sessionRole, setSessionRole] = useState<'user' | 'admin'>(() => {
+    try {
+      const raw = localStorage.getItem('fg_session');
+      if (!raw) return 'user';
+      const parsed = JSON.parse(raw);
+      return parsed?.role === 'admin' ? 'admin' : 'user';
+    } catch {
+      return 'user';
+    }
+  });
+
   // Initialize state from localStorage: if session exists, open dashboard
   const [authState, setAuthState] = useState<'auth' | 'landing' | 'dashboard'>(() => {
     try {
@@ -29,6 +41,7 @@ function App() {
       if (session) localStorage.setItem('fg_session', JSON.stringify(session));
       else localStorage.setItem('fg_session', JSON.stringify({ authenticated: true }));
     } catch (e) { /* ignore */ }
+    setSessionRole(session?.role === 'admin' ? 'admin' : 'user');
     setAuthState('dashboard');
   };
 
@@ -49,6 +62,7 @@ function App() {
       }
     })();
     try { localStorage.removeItem('fg_session'); } catch (e) { /* ignore */ }
+    setSessionRole('user');
     setAuthState('landing');
   }, []);
 
@@ -59,7 +73,7 @@ function App() {
       ) : authState === 'auth' ? (
         <Auth onAuthSuccess={handleAuthSuccess} onBack={() => setAuthState('landing')} />
       ) : (
-        <Main onLogout={handleLogout} />
+        sessionRole === 'admin' ? <AdminPanel onLogout={handleLogout} /> : <Main onLogout={handleLogout} />
       )}
     </>
   );

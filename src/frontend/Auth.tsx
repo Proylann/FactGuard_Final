@@ -258,7 +258,8 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onBack }) => {
   const handleLoginSubmit = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/api/login`, {
+      const isAdminLogin = formData.email.trim().toLowerCase() === 'admin@factguard.com';
+      const response = await fetch(`${API_BASE}${isAdminLogin ? '/api/admin/login' : '/api/login'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ email: formData.email, password: formData.password }),
@@ -268,6 +269,23 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onBack }) => {
       const data = responseText ? JSON.parse(responseText) : {};
 
       if (response.ok) {
+        if (isAdminLogin) {
+          const session = {
+            token: data.access_token || data.token || null,
+            access_token: data.access_token || data.token || null,
+            expires_at: data.expires_at || null,
+            user: data.email || formData.email,
+            user_id: 'admin',
+            username: data.username || 'FactGuard Admin',
+            email: data.email || formData.email,
+            role: 'admin',
+          };
+          localStorage.setItem('fg_session', JSON.stringify(session));
+          setFailedAttempts(0);
+          onAuthSuccess?.(session);
+          return;
+        }
+
         if (data.status === 'mfa_required') {
           setPreVerifyUserId(data.user_id || null);
           setMode('mfa');

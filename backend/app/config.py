@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     SESSION_TTL_SECONDS: int = 60 * 60 * 8
     SIGNUP_OTP_TTL_SECONDS: int = 10 * 60
     PASSWORD_RESET_TTL_SECONDS: int = 30 * 60
+    ADMIN_EMAIL: str = "admin@factguard.com"
+    ADMIN_PASSWORD: str = "@Password04"
+    ADMIN_USERNAME: str = "FactGuard Admin"
 
 
 settings = Settings()

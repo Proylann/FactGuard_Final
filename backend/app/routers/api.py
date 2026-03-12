@@ -1,4 +1,7 @@
+import csv
+import io
 from datetime import datetime, timedelta
+from html import escape
 import random
 import secrets
 import time
@@ -6,7 +9,7 @@ import uuid
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import and_, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -15,7 +18,7 @@ from sqlalchemy.orm import Session
 from .. import schemas
 from ..config import settings
 from ..db import get_db
-from ..models import ScanResult, User
+from ..models import AuditLog, ScanResult, User
 from ..repositories import UserRepository
 from ..services.ai_text_engine import AITextDetector
 from ..services.deepfake_detector import DeepfakeDetector
@@ -50,6 +53,7 @@ _mfa_store: dict[int, dict[str, float | int]] = {}
 _pending_signup_store: dict[str, dict[str, str | float]] = {}
 _password_reset_store: dict[str, dict[str, float | int]] = {}
 _mfa_preferences: dict[int, bool] = {}
+_admin_session_store: dict[str, dict[str, float | str]] = {}
 
 
 def _prune_temp_store(store: dict, ttl_key: str = "expires_at") -> None:
@@ -71,6 +75,30 @@ def _extract_bearer_token(authorization: Optional[str]) -> str:
     return token
 
 
+def _create_admin_session() -> dict[str, float | str]:
+    token = secrets.token_urlsafe(32)
+    expires_at = time.time() + settings.SESSION_TTL_SECONDS
+    _admin_session_store[token] = {"email": settings.ADMIN_EMAIL.lower(), "expires_at": expires_at}
+    return {"access_token": token, "token_type": "bearer", "expires_at": int(expires_at)}
+
+
+def _validate_admin_session(token: str) -> bool:
+    _prune_temp_store(_admin_session_store)
+    session = _admin_session_store.get(token)
+    return bool(session and str(session.get("email", "")).lower() == settings.ADMIN_EMAIL.lower())
+
+
+def _require_admin(authorization: Optional[str]) -> dict[str, str]:
+    token = _extract_bearer_token(authorization)
+    if not _validate_admin_session(token):
+        raise HTTPException(status_code=401, detail="Admin session expired or invalid")
+    return {
+        "token": token,
+        "email": settings.ADMIN_EMAIL,
+        "username": settings.ADMIN_USERNAME,
+    }
+
+
 def _require_authenticated_user(
     db: Session,
     authorization: Optional[str],
@@ -82,7 +110,171 @@ def _require_authenticated_user(
     user = db.query(User).filter(User.user_id == int(user_id)).first()
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    if not bool(getattr(user, "is_active", True)):
+        raise HTTPException(status_code=403, detail="Account is inactive")
     return user
+
+
+def _safe_write_audit_log(
+    db: Session,
+    *,
+    action: str,
+    type: str,
+    msg: str,
+    user_id: Optional[int] = None,
+    ip_address: Optional[str] = None,
+) -> None:
+    try:
+        db.add(
+            AuditLog(
+                user_id=user_id,
+                action=action,
+                ip_address=ip_address,
+                msg=msg,
+                type=type,
+            )
+        )
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+
+
+def _normalize_user_role(role: Optional[str]) -> str:
+    return role if role in {"admin", "staff", "user"} else "user"
+
+
+def _normalize_review_status(status_value: Optional[str]) -> str:
+    return status_value if status_value in {"pending", "approved", "rejected"} else "pending"
+
+
+def _format_timestamp(value: Optional[datetime]) -> str:
+    return value.isoformat() if value else ""
+
+
+def _get_last_login_for_user(db: Session, user_id: int) -> Optional[datetime]:
+    return (
+        db.query(func.max(AuditLog.timestamp))
+        .filter(AuditLog.user_id == user_id, AuditLog.action == "login")
+        .scalar()
+    )
+
+
+def _serialize_admin_user(db: Session, user: User) -> dict:
+    total_scans = db.query(ScanResult).filter(ScanResult.user_id == user.user_id).count()
+    flagged_scans = db.query(ScanResult).filter(
+        ScanResult.user_id == user.user_id,
+        ScanResult.is_synthetic.is_(True),
+    ).count()
+    last_login = user.last_login or _get_last_login_for_user(db, user.user_id)
+    return {
+        "user_id": user.user_id,
+        "username": user.username,
+        "email": user.email,
+        "role": _normalize_user_role(getattr(user, "role", "user")),
+        "is_active": bool(getattr(user, "is_active", True)),
+        "status": "active" if bool(getattr(user, "is_active", True)) else "inactive",
+        "last_login": _format_timestamp(last_login),
+        "total_scans": total_scans,
+        "flagged_scans": flagged_scans,
+        "created_at": _format_timestamp(getattr(user, "created_at", None)),
+    }
+
+
+def _serialize_admin_record(scan: ScanResult, username: Optional[str], email: Optional[str]) -> dict:
+    return {
+        "scan_id": scan.id,
+        "user_id": scan.user_id,
+        "username": username,
+        "email": email,
+        "filename": scan.filename,
+        "media_type": scan.media_type,
+        "confidence_score": round(float(scan.confidence_score), 1),
+        "is_synthetic": bool(scan.is_synthetic),
+        "review_status": _normalize_review_status(getattr(scan, "review_status", "pending")),
+        "artifacts": scan.artifacts or [],
+        "created_at": _format_timestamp(scan.created_at),
+    }
+
+
+def _serialize_admin_log(log: AuditLog, username: Optional[str], email: Optional[str]) -> dict:
+    return {
+        "log_id": log.log_id,
+        "timestamp": _format_timestamp(log.timestamp),
+        "action": log.action,
+        "message": log.msg or log.action,
+        "type": log.type if log.type in {"info", "success", "error"} else "info",
+        "ip_address": log.ip_address,
+        "user_id": log.user_id,
+        "username": username,
+        "email": email,
+    }
+
+
+def _build_csv_bytes(headers: list[str], rows: list[list[object]]) -> bytes:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return buffer.getvalue().encode("utf-8")
+
+
+def _build_excel_bytes(title: str, headers: list[str], rows: list[list[object]]) -> bytes:
+    thead = "".join(f"<th>{escape(str(header))}</th>" for header in headers)
+    tbody_rows = []
+    for row in rows:
+        cells = "".join(f"<td>{escape(str(cell))}</td>" for cell in row)
+        tbody_rows.append(f"<tr>{cells}</tr>")
+    html = (
+        "<html><head><meta charset='utf-8' /></head><body>"
+        f"<h2>{escape(title)}</h2>"
+        f"<table border='1'><thead><tr>{thead}</tr></thead><tbody>{''.join(tbody_rows)}</tbody></table>"
+        "</body></html>"
+    )
+    return html.encode("utf-8")
+
+
+def _pdf_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _build_simple_pdf(title: str, lines: list[str]) -> bytes:
+    safe_title = _pdf_escape(title)
+    safe_lines = [_pdf_escape(line[:110]) for line in lines]
+    content_lines = ["BT", "/F1 18 Tf", "50 780 Td", f"({safe_title}) Tj", "/F1 11 Tf"]
+    y = 756
+    for line in safe_lines:
+        content_lines.extend([f"50 {y} Td", f"({line}) Tj"])
+        y -= 18
+        if y < 70:
+            break
+    content_lines.append("ET")
+    stream = "\n".join(content_lines).encode("latin-1", errors="replace")
+
+    objects = [
+        b"1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n",
+        b"2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj\n",
+        b"3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>endobj\n",
+        b"4 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n",
+        f"5 0 obj<< /Length {len(stream)} >>stream\n".encode("latin-1") + stream + b"\nendstream endobj\n",
+    ]
+
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for obj in objects:
+        offsets.append(len(pdf))
+        pdf.extend(obj)
+    xref_start = len(pdf)
+    pdf.extend(f"xref\n0 {len(offsets)}\n".encode("latin-1"))
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode("latin-1"))
+    pdf.extend(
+        (
+            f"trailer<< /Size {len(offsets)} /Root 1 0 R >>\n"
+            f"startxref\n{xref_start}\n%%EOF"
+        ).encode("latin-1")
+    )
+    return bytes(pdf)
 
 
 @router.post("/signup")
@@ -194,9 +386,21 @@ def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
             },
         )
 
+    if not bool(getattr(user, "is_active", True)):
+        raise HTTPException(status_code=403, detail="This account is deactivated")
+
     reset_failed_login(email)
     if not _mfa_preferences.get(user.user_id, False):
         session = session_service.create(user.user_id)
+        user.last_login = datetime.utcnow()
+        db.commit()
+        _safe_write_audit_log(
+            db,
+            user_id=user.user_id,
+            action="login",
+            type="success",
+            msg="User authentication successful",
+        )
         return {
             "status": "success",
             "user_id": user.user_id,
@@ -233,6 +437,38 @@ def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/admin/login")
+def admin_login(payload: schemas.AdminLogin, db: Session = Depends(get_db)):
+    if payload.email.lower() != settings.ADMIN_EMAIL.lower() or payload.password != settings.ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+
+    session = _create_admin_session()
+    _safe_write_audit_log(
+        db,
+        action="admin_login",
+        type="success",
+        msg="Administrator authentication successful",
+    )
+    return {
+        "status": "success",
+        "role": "admin",
+        "email": settings.ADMIN_EMAIL,
+        "username": settings.ADMIN_USERNAME,
+        **session,
+    }
+
+
+@router.get("/admin/session/validate")
+def validate_admin_session(authorization: Optional[str] = Header(default=None)):
+    _require_admin(authorization)
+    return {
+        "valid": True,
+        "role": "admin",
+        "email": settings.ADMIN_EMAIL,
+        "username": settings.ADMIN_USERNAME,
+    }
+
+
 @router.post("/mfa/login")
 def mfa_login(payload: dict = Body(...), db: Session = Depends(get_db)):
     user_id = payload.get("user_id")
@@ -250,6 +486,8 @@ def mfa_login(payload: dict = Body(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
 
     _mfa_store.pop(int(user_id), None)
+    user.last_login = datetime.utcnow()
+    db.commit()
     session = session_service.create(user.user_id)
     return {
         "user_id": user.user_id,
@@ -351,9 +589,28 @@ def reset_password_confirm(payload: schemas.PasswordResetConfirmRequest, db: Ses
 
 
 @router.post("/logout")
-def logout(authorization: Optional[str] = Header(default=None)):
+def logout(db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
     token = _extract_bearer_token(authorization)
+    if _validate_admin_session(token):
+        _admin_session_store.pop(token, None)
+        _safe_write_audit_log(
+            db,
+            action="admin_logout",
+            type="info",
+            msg="Administrator signed out",
+        )
+        return {"status": "success"}
+
+    user_id = session_service.validate(token)
     session_service.delete(token)
+    if user_id:
+        _safe_write_audit_log(
+            db,
+            user_id=int(user_id),
+            action="logout",
+            type="info",
+            msg="User signed out",
+        )
     return {"status": "success"}
 
 
@@ -467,6 +724,13 @@ def detect_ai_text(
             db.commit()
             db.refresh(row)
             db_id = row.id
+            _safe_write_audit_log(
+                db,
+                user_id=resolved_user_id,
+                action="scan_text",
+                type="success",
+                msg=f"AI text analysis completed for text_analysis ({round(float(result.get('confidence', 0)), 1)}%)",
+            )
         except SQLAlchemyError:
             db.rollback()
 
@@ -501,6 +765,13 @@ async def detect_deepfake_image(
             db.commit()
             db.refresh(row)
             db_id = row.id
+            _safe_write_audit_log(
+                db,
+                user_id=resolved_user_id,
+                action="scan_media",
+                type="success",
+                msg=f"Media analysis completed for {file.filename or 'image_scan'} ({round(float(result.get('confidence', 0)), 1)}%)",
+            )
         except SQLAlchemyError:
             db.rollback()
 
@@ -555,6 +826,13 @@ def scan_plagiarism(
             db.commit()
             db.refresh(row)
             scan_id = row.id
+            _safe_write_audit_log(
+                db,
+                user_id=resolved_user_id,
+                action="scan_plagiarism",
+                type="success",
+                msg=f"Plagiarism scan completed ({round(float(report.get('overallScore', 0)), 1)}% similarity)",
+            )
         except SQLAlchemyError as err:
             db.rollback()
             report.setdefault("notes", []).append(f"Scan result was not saved to DB: {err.__class__.__name__}")
@@ -562,6 +840,52 @@ def scan_plagiarism(
         report.setdefault("notes", []).append("Scan result was not saved to DB: no user exists yet.")
 
     return {"status": "success", "scan_id": scan_id, **report}
+
+
+@router.get("/audit-logs")
+def get_audit_logs(db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
+    current_user = _require_authenticated_user(db, authorization)
+
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(AuditLog.user_id == current_user.user_id)
+        .order_by(AuditLog.timestamp.desc())
+        .limit(50)
+        .all()
+    )
+    scan_rows = (
+        db.query(ScanResult)
+        .filter(ScanResult.user_id == current_user.user_id)
+        .order_by(ScanResult.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    events = [
+        {
+            "timestamp": row.timestamp.isoformat() if row.timestamp else "",
+            "time": row.timestamp.strftime("%Y-%m-%d %H:%M:%S") if row.timestamp else "",
+            "msg": row.msg or row.action,
+            "type": row.type if row.type in {"info", "success", "error"} else "info",
+            "category": "download" if "report" in (row.msg or "").lower() else "auth" if row.action in {"login", "logout"} else "analysis",
+        }
+        for row in audit_rows
+    ]
+
+    if not audit_rows:
+        events.extend(
+            {
+                "timestamp": row.created_at.isoformat() if row.created_at else "",
+                "time": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else "",
+                "msg": f"Analysis completed for {row.filename}",
+                "type": "success",
+                "category": "analysis",
+            }
+            for row in scan_rows
+        )
+
+    events.sort(key=lambda item: item["timestamp"], reverse=True)
+    return events[:50]
 
 
 @router.get("/analytics")
@@ -679,6 +1003,268 @@ def daily_reports(db: Session = Depends(get_db), authorization: Optional[str] = 
         "synthetic_avg_confidence": round(float(synthetic_avg), 1),
         "report_date": str(today),
     }
+
+
+@router.get("/reports/download")
+def download_report(
+    report_type: str,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+):
+    current_user = _require_authenticated_user(db, authorization)
+    today = datetime.now().date()
+    base_filters = [func.DATE(ScanResult.created_at) == today, ScanResult.user_id == current_user.user_id]
+
+    synthetic_count = db.query(ScanResult).filter(*base_filters, ScanResult.is_synthetic.is_(True)).count()
+    authentic_count = db.query(ScanResult).filter(*base_filters, ScanResult.is_synthetic.is_(False)).count()
+    total_scans = synthetic_count + authentic_count
+    synthetic_avg = db.query(func.avg(ScanResult.confidence_score)).filter(
+        *base_filters,
+        ScanResult.is_synthetic.is_(True),
+    ).scalar() or 0
+
+    normalized_type = report_type.lower().strip()
+    if normalized_type not in {"synthetic", "authentic"}:
+        raise HTTPException(status_code=400, detail="Invalid report type")
+
+    title = f"FactGuard {normalized_type.title()} Report"
+    lines = [
+        f"Date: {today.isoformat()}",
+        f"Generated for: {current_user.username or current_user.email}",
+        f"Total scans today: {total_scans}",
+        f"Synthetic findings: {synthetic_count}",
+        f"Authentic findings: {authentic_count}",
+        f"Average synthetic confidence: {round(float(synthetic_avg), 1)}%",
+    ]
+    if normalized_type == "synthetic":
+        lines.append("Scope: flagged synthetic or manipulated content.")
+    else:
+        lines.append("Scope: scans assessed as authentic content.")
+
+    pdf_bytes = _build_simple_pdf(title, lines)
+    _safe_write_audit_log(
+        db,
+        user_id=current_user.user_id,
+        action="download_report",
+        type="info",
+        msg=f"{normalized_type.title()} PDF report generated",
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="factguard_{normalized_type}_report.pdf"'},
+    )
+
+
+@router.get("/admin/overview")
+def admin_overview(db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
+    _require_admin(authorization)
+
+    total_users = db.query(User).count()
+    total_scans = db.query(ScanResult).count()
+    synthetic_scans = db.query(ScanResult).filter(ScanResult.is_synthetic.is_(True)).count()
+    authentic_scans = db.query(ScanResult).filter(ScanResult.is_synthetic.is_(False)).count()
+    total_logs = db.query(AuditLog).count()
+    recent_users = db.query(User).order_by(User.user_id.desc()).limit(5).all()
+    recent_scans = (
+        db.query(ScanResult, User.username, User.email)
+        .join(User, User.user_id == ScanResult.user_id)
+        .order_by(ScanResult.created_at.desc())
+        .limit(8)
+        .all()
+    )
+
+    return {
+        "total_users": total_users,
+        "total_scans": total_scans,
+        "synthetic_scans": synthetic_scans,
+        "authentic_scans": authentic_scans,
+        "total_logs": total_logs,
+        "recent_users": [
+            {"user_id": user.user_id, "username": user.username, "email": user.email}
+            for user in recent_users
+        ],
+        "recent_scans": [
+            {
+                "scan_id": scan.id,
+                "user_id": scan.user_id,
+                "username": username,
+                "email": email,
+                "filename": scan.filename,
+                "media_type": scan.media_type,
+                "confidence_score": round(float(scan.confidence_score), 1),
+                "is_synthetic": bool(scan.is_synthetic),
+                "created_at": scan.created_at.isoformat() if scan.created_at else "",
+            }
+            for scan, username, email in recent_scans
+        ],
+    }
+
+
+@router.get("/admin/users")
+def admin_list_users(db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
+    _require_admin(authorization)
+    users = db.query(User).order_by(User.user_id.asc()).all()
+    return [
+        {
+            "user_id": user.user_id,
+            "username": user.username,
+            "email": user.email,
+            "total_scans": db.query(ScanResult).filter(ScanResult.user_id == user.user_id).count(),
+            "flagged_scans": db.query(ScanResult).filter(
+                ScanResult.user_id == user.user_id,
+                ScanResult.is_synthetic.is_(True),
+            ).count(),
+        }
+        for user in users
+    ]
+
+
+@router.post("/admin/users")
+def admin_create_user(
+    payload: schemas.AdminUserCreateRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+):
+    admin = _require_admin(authorization)
+    user_repo = UserRepository(db)
+    auth = AuthService(user_repo)
+    if user_repo.get_by_email(payload.email.lower()):
+        raise HTTPException(status_code=400, detail="Email already exists")
+    try:
+        auth.validate_password_policy(payload.password)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+
+    user = user_repo.create(
+        email=payload.email.lower(),
+        username=payload.username.strip(),
+        hashed_password=auth.get_password_hash(payload.password),
+    )
+    _safe_write_audit_log(
+        db,
+        action="admin_create_user",
+        type="success",
+        msg=f"Administrator created user {user.email}",
+        ip_address=admin["email"],
+    )
+    return {"user_id": user.user_id, "email": user.email, "username": user.username}
+
+
+@router.patch("/admin/users/{user_id}")
+def admin_update_user(
+    user_id: int,
+    payload: schemas.AdminUserUpdateRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+):
+    admin = _require_admin(authorization)
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_repo = UserRepository(db)
+    auth = AuthService(user_repo)
+
+    if payload.email is not None:
+        normalized_email = str(payload.email).lower()
+        existing = user_repo.get_by_email(normalized_email)
+        if existing and existing.user_id != user_id:
+            raise HTTPException(status_code=400, detail="Email already exists")
+        user.email = normalized_email
+    if payload.username is not None:
+        user.username = payload.username.strip()
+    if payload.password is not None:
+        try:
+            auth.validate_password_policy(payload.password)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=str(err))
+        user.password = auth.get_password_hash(payload.password)
+
+    db.commit()
+    db.refresh(user)
+    _safe_write_audit_log(
+        db,
+        action="admin_update_user",
+        type="info",
+        msg=f"Administrator updated user {user.email}",
+        ip_address=admin["email"],
+    )
+    return {"user_id": user.user_id, "email": user.email, "username": user.username}
+
+
+@router.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: int, db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
+    admin = _require_admin(authorization)
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    db.query(ScanResult).filter(ScanResult.user_id == user_id).delete()
+    db.query(AuditLog).filter(AuditLog.user_id == user_id).delete()
+    db.delete(user)
+    db.commit()
+    _safe_write_audit_log(
+        db,
+        action="admin_delete_user",
+        type="error",
+        msg=f"Administrator deleted user {user.email}",
+        ip_address=admin["email"],
+    )
+    return {"status": "success"}
+
+
+@router.get("/admin/scans")
+def admin_list_scans(db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
+    _require_admin(authorization)
+    rows = (
+        db.query(ScanResult, User.username, User.email)
+        .join(User, User.user_id == ScanResult.user_id)
+        .order_by(ScanResult.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    return [
+        {
+            "scan_id": scan.id,
+            "user_id": scan.user_id,
+            "username": username,
+            "email": email,
+            "filename": scan.filename,
+            "media_type": scan.media_type,
+            "confidence_score": round(float(scan.confidence_score), 1),
+            "is_synthetic": bool(scan.is_synthetic),
+            "artifacts": scan.artifacts or [],
+            "created_at": scan.created_at.isoformat() if scan.created_at else "",
+        }
+        for scan, username, email in rows
+    ]
+
+
+@router.get("/admin/logs")
+def admin_list_logs(db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
+    _require_admin(authorization)
+    rows = (
+        db.query(AuditLog, User.username, User.email)
+        .outerjoin(User, User.user_id == AuditLog.user_id)
+        .order_by(AuditLog.timestamp.desc())
+        .limit(250)
+        .all()
+    )
+    return [
+        {
+            "log_id": log.log_id,
+            "timestamp": log.timestamp.isoformat() if log.timestamp else "",
+            "action": log.action,
+            "message": log.msg or log.action,
+            "type": log.type if log.type in {"info", "success", "error"} else "info",
+            "ip_address": log.ip_address,
+            "user_id": log.user_id,
+            "username": username,
+            "email": email,
+        }
+        for log, username, email in rows
+    ]
 
 
 def _resolve_user_id(db: Session, requested_user_id: Optional[int]) -> Optional[int]:

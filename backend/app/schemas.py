@@ -15,6 +15,11 @@ class UserLogin(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
 
 
+class AdminLogin(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=128)
+
+
 class UserOut(BaseModel):
     user_id: int
     email: EmailStr
@@ -50,6 +55,42 @@ class MfaSettingsUpdateRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1, max_length=128)
     new_password: str = Field(..., min_length=10, max_length=128)
+
+
+class AdminUserCreateRequest(BaseModel):
+    email: EmailStr
+    username: str = Field(..., min_length=1, max_length=50)
+    password: str = Field(..., min_length=10, max_length=128)
+    role: Literal["admin", "staff", "user"] = "user"
+    is_active: bool = True
+
+
+class AdminUserUpdateRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    username: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    password: Optional[str] = Field(default=None, min_length=10, max_length=128)
+    role: Optional[Literal["admin", "staff", "user"]] = None
+    is_active: Optional[bool] = None
+
+
+class AdminRecordCreateRequest(BaseModel):
+    user_id: int
+    filename: str = Field(..., min_length=1, max_length=255)
+    media_type: Literal["image", "video", "text"]
+    confidence_score: float = Field(..., ge=0, le=100)
+    is_synthetic: bool
+    review_status: Literal["pending", "approved", "rejected"] = "pending"
+    artifacts: list[str] = Field(default_factory=list)
+
+
+class AdminRecordUpdateRequest(BaseModel):
+    user_id: Optional[int] = None
+    filename: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    media_type: Optional[Literal["image", "video", "text"]] = None
+    confidence_score: Optional[float] = Field(default=None, ge=0, le=100)
+    is_synthetic: Optional[bool] = None
+    review_status: Optional[Literal["pending", "approved", "rejected"]] = None
+    artifacts: Optional[list[str]] = None
 
 
 class PlagiarismScanRequest(BaseModel):

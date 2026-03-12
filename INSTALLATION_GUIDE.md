@@ -113,14 +113,6 @@ python -m venv venv
 venv\Scripts\activate
 ```
 
-**macOS/Linux:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-You should see `(venv)` at the start of your terminal prompt after activation.
-
 ### Step 3: Upgrade pip
 
 ```bash

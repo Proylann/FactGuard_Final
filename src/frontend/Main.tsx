@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
   BookOpen,
@@ -10,13 +10,12 @@ import {
   LayoutDashboard,
   LogOut,
   Scan,
-  Search,
   Settings,
   Shield,
   Sparkles,
   Type,
 } from 'lucide-react';
-import { getAuthToken } from '../components/main/helpers';
+import { downloadReport, getAuthToken } from '../components/main/helpers';
 import SettingsView from '../components/main/SettingsView';
 import { AnalyzeView, DashboardView, DocsView, HistoryView, ReportsView } from '../components/main/views';
 import type { AnalyticsData, Log, ReportsData, ScanResult, ViewId } from '../components/main/types';
@@ -178,7 +177,7 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
   const [currentView, setCurrentView] = useState<ViewId>('dashboard');
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [logs] = useState<Log[]>([]);
+  const [logs, setLogs] = useState<Log[]>([]);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [reportsData, setReportsData] = useState<ReportsData | null>(null);
   const [analyzeTool, setAnalyzeTool] = useState<AnalyzeTool>('deepfake');
@@ -242,27 +241,30 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
     fetchSettings();
   }, []);
 
+  const fetchWorkspaceData = useEffectEvent(async () => {
+    try {
+      const token = getAuthToken();
+      if (!token) return;
+
+      const [analyticsRes, reportsRes, logsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/analytics`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE}/api/daily-reports`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE}/api/audit-logs`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+
+      if (analyticsRes.ok) setAnalyticsData(await analyticsRes.json());
+      if (reportsRes.ok) setReportsData(await reportsRes.json());
+      if (logsRes.ok) setLogs(await logsRes.json());
+    } catch {
+      // Keep UI functional if backend is unavailable.
+    }
+  });
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const session = JSON.parse(localStorage.getItem('fg_session') || '{}');
-        const userId = session.user_id || 1;
-        const token = getAuthToken();
-
-        const [analyticsRes, reportsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/analytics?user_id=${userId}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }),
-          fetch(`${API_BASE}/api/daily-reports?user_id=${userId}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }),
-        ]);
-
-        if (analyticsRes.ok) setAnalyticsData(await analyticsRes.json());
-        if (reportsRes.ok) setReportsData(await reportsRes.json());
-      } catch {
-        // Keep UI functional if backend is unavailable.
-      }
-    };
-
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
+    void fetchWorkspaceData();
+    const interval = setInterval(() => {
+      void fetchWorkspaceData();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -271,8 +273,6 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
     setAnalyzing(true);
 
     try {
-      const session = JSON.parse(localStorage.getItem('fg_session') || '{}');
-      const userId = session.user_id || 1;
       const token = getAuthToken();
 
       const endpoint = type === 'image'
@@ -285,12 +285,11 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
         ? (() => {
             const formData = new FormData();
             formData.append('file', data as Blob);
-            formData.append('user_id', userId.toString());
             return formData;
           })()
         : type === 'plagiarism'
-          ? JSON.stringify({ inputText: data as string, user_id: userId })
-          : JSON.stringify({ text: data as string, user_id: userId });
+          ? JSON.stringify({ inputText: data as string })
+          : JSON.stringify({ text: data as string });
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -345,10 +344,18 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
           artifacts: Array.isArray(parsed.artifacts) ? parsed.artifacts : ['No artifacts returned'],
         });
       }
+      await fetchWorkspaceData();
     } catch {
       // Keep UX smooth even on network errors.
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleDownloadReport = async (type: 'synthetic' | 'authentic') => {
+    const didDownload = await downloadReport(type);
+    if (didDownload) {
+      await fetchWorkspaceData();
     }
   };
 
@@ -454,15 +461,7 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
                   Operational workspace for analysis, audit trails, reporting, and model documentation.
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="relative w-full md:w-[320px]">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search anything..."
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-10 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 outline-none"
-                  />
-                </div>
+              <div className="flex items-center gap-3 self-end md:self-start">
                 <div className="h-10 w-10 rounded-full bg-slate-900 text-white flex items-center justify-center text-sm font-black">
                   {userName.charAt(0).toUpperCase()}
                 </div>
@@ -481,7 +480,7 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
                 />
               )}
               {currentView === 'history' && <HistoryView key="history" logs={logs} />}
-              {currentView === 'reports' && <ReportsView key="reports" data={reportsData} />}
+              {currentView === 'reports' && <ReportsView key="reports" data={reportsData} onDownload={handleDownloadReport} />}
               {currentView === 'docs' && <DocsView key="docs" />}
               {currentView === 'settings' && (
                 <SettingsView

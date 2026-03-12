@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { DashboardKpiCard, MetricTile } from './cards';
 import { fadeIn } from './animations';
-import { downloadReport } from './helpers';
 import type { AnalyticsData, Log, ReportsData, ScanResult } from './types';
 
 type TrendView = 'weekly' | 'monthly';
@@ -552,11 +551,9 @@ export const HistoryView = ({ logs }: { logs: Log[] }) => {
     .filter((log) => (categoryFilter === 'all' ? true : log.category === categoryFilter))
     .filter((log) => log.msg.toLowerCase().includes(query.toLowerCase()) || log.time.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
-      const timeA = a.time.split(':').map(Number);
-      const timeB = b.time.split(':').map(Number);
-      const secondsA = timeA[0] * 3600 + timeA[1] * 60 + timeA[2];
-      const secondsB = timeB[0] * 3600 + timeB[1] * 60 + timeB[2];
-      return sortOrder === 'newest' ? secondsB - secondsA : secondsA - secondsB;
+      const valueA = a.timestamp ? new Date(a.timestamp).getTime() : new Date(`1970-01-01T${a.time}`).getTime();
+      const valueB = b.timestamp ? new Date(b.timestamp).getTime() : new Date(`1970-01-01T${b.time}`).getTime();
+      return sortOrder === 'newest' ? valueB - valueA : valueA - valueB;
     });
 
   return (
@@ -605,7 +602,9 @@ export const HistoryView = ({ logs }: { logs: Log[] }) => {
             <tbody>
               {filteredLogs.map((log, i) => (
                 <tr key={i} className="border-b border-slate-100">
-                  <td className="py-4 pr-4 text-xs font-mono text-slate-500">{log.time}</td>
+                  <td className="py-4 pr-4 text-xs font-mono text-slate-500">
+                    {log.timestamp ? new Date(log.timestamp).toLocaleString() : log.time}
+                  </td>
                   <td className="py-4 pr-4 text-sm font-bold text-slate-800">{log.msg}</td>
                   <td className="py-4 pr-4">
                     <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-600">{log.category}</span>
@@ -632,7 +631,13 @@ export const HistoryView = ({ logs }: { logs: Log[] }) => {
   );
 };
 
-export const ReportsView = ({ data }: { data: ReportsData | null }) => {
+export const ReportsView = ({
+  data,
+  onDownload,
+}: {
+  data: ReportsData | null;
+  onDownload?: (type: 'synthetic' | 'authentic') => Promise<void> | void;
+}) => {
   const displayData = data || {
     synthetic_count: 0,
     authentic_count: 0,
@@ -667,7 +672,7 @@ export const ReportsView = ({ data }: { data: ReportsData | null }) => {
               <span className="text-lg font-black text-slate-800">{displayData.synthetic_avg_confidence.toFixed(1)}%</span>
             </div>
           </div>
-          <button onClick={() => downloadReport('synthetic')} className="mt-6 w-full rounded-xl bg-slate-900 py-3.5 text-sm font-black text-white hover:bg-rose-600">
+          <button onClick={() => void onDownload?.('synthetic')} className="mt-6 w-full rounded-xl bg-slate-900 py-3.5 text-sm font-black text-white hover:bg-rose-600">
             Download PDF Report
           </button>
         </div>
@@ -685,7 +690,7 @@ export const ReportsView = ({ data }: { data: ReportsData | null }) => {
               <span className="text-lg font-black text-slate-800">{displayData.total_scans}</span>
             </div>
           </div>
-          <button onClick={() => downloadReport('authentic')} className="mt-6 w-full rounded-xl bg-slate-900 py-3.5 text-sm font-black text-white hover:bg-emerald-600">
+          <button onClick={() => void onDownload?.('authentic')} className="mt-6 w-full rounded-xl bg-slate-900 py-3.5 text-sm font-black text-white hover:bg-emerald-600">
             Download PDF Report
           </button>
         </div>
