@@ -15,6 +15,24 @@ import type { AnalyticsData, Log, ReportsData, ScanResult } from './types';
 
 type TrendView = 'weekly' | 'monthly';
 
+const EMPTY_ANALYTICS_DATA: AnalyticsData = {
+  total_scans: 0,
+  threats_detected: 0,
+  detection_rate: 0,
+  avg_confidence: 0,
+  quick_history: [],
+  weekly_data: [0, 0, 0, 0, 0, 0, 0],
+  weekly_labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+  weekly_plagiarism_data: [0, 0, 0, 0, 0, 0, 0],
+  weekly_text_data: [0, 0, 0, 0, 0, 0, 0],
+  weekly_ai_data: [0, 0, 0, 0, 0, 0, 0],
+  monthly_data: Array.from({ length: 12 }, () => 0),
+  monthly_labels: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
+  monthly_plagiarism_data: Array.from({ length: 12 }, () => 0),
+  monthly_text_data: Array.from({ length: 12 }, () => 0),
+  monthly_ai_data: Array.from({ length: 12 }, () => 0),
+};
+
 export const DashboardView = ({
   data,
   onOpenHistory,
@@ -24,23 +42,7 @@ export const DashboardView = ({
 }) => {
   const [trendView, setTrendView] = useState<TrendView>('weekly');
 
-  const displayData = data || {
-    total_scans: 0,
-    threats_detected: 0,
-    detection_rate: 0,
-    avg_confidence: 0,
-    quick_history: [],
-    weekly_data: [0, 0, 0, 0, 0, 0, 0],
-    weekly_labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    weekly_plagiarism_data: [0, 0, 0, 0, 0, 0, 0],
-    weekly_text_data: [0, 0, 0, 0, 0, 0, 0],
-    weekly_ai_data: [0, 0, 0, 0, 0, 0, 0],
-    monthly_data: Array.from({ length: 12 }, () => 0),
-    monthly_labels: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
-    monthly_plagiarism_data: Array.from({ length: 12 }, () => 0),
-    monthly_text_data: Array.from({ length: 12 }, () => 0),
-    monthly_ai_data: Array.from({ length: 12 }, () => 0),
-  };
+  const displayData = data || EMPTY_ANALYTICS_DATA;
 
   const trendData = useMemo(() => {
     if (trendView === 'monthly') {

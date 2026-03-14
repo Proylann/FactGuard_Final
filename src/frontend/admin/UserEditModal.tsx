@@ -1,5 +1,6 @@
 import { Plus, X } from 'lucide-react';
-import { cardClass, inputClass, primaryButtonClass, ModalBackdrop } from './shared';
+import { ModalBackdrop } from './shared';
+import { cardClass, inputClass, primaryButtonClass } from './sharedStyles';
 
 type UserRole = 'admin' | 'staff' | 'user';
 

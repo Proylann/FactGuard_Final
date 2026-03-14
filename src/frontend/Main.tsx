@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useEffectEvent, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
   BookOpen,
@@ -18,7 +18,7 @@ import {
 import { downloadReport, getAuthToken } from '../components/main/helpers';
 import SettingsView from '../components/main/SettingsView';
 import { AnalyzeView, DashboardView, DocsView, HistoryView, ReportsView } from '../components/main/views';
-import type { AnalyticsData, Log, ReportsData, ScanResult, ViewId } from '../components/main/types';
+import type { AnalyticsData, Log, ReportsData, ScanResult, StoredSession, ViewId } from '../components/main/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -59,10 +59,7 @@ const SidebarNav = ({
   onSelectAnalyzeTool: (tool: AnalyzeTool) => void;
 }) => {
   const [toolsOpen, setToolsOpen] = useState(currentView === 'analyze');
-
-  useEffect(() => {
-    if (currentView === 'analyze') setToolsOpen(true);
-  }, [currentView]);
+  const isToolsOpen = currentView === 'analyze' || toolsOpen;
 
   return (
   <aside className="h-full rounded-[24px] border-r border-slate-200 bg-slate-50 p-4 md:p-5 flex flex-col">
@@ -123,9 +120,9 @@ const SidebarNav = ({
                   </span>
                   A.I Tools
                 </span>
-                {toolsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                {isToolsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               </button>
-              {toolsOpen && (
+              {isToolsOpen && (
                 <div className="px-2 pb-2">
                   {ANALYZE_TOOL_ITEMS.map((tool) => (
                     <button
@@ -189,7 +186,7 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
     try {
       const sessionRaw = localStorage.getItem('fg_session');
       if (!sessionRaw) return;
-      const session = JSON.parse(sessionRaw);
+      const session = JSON.parse(sessionRaw) as StoredSession;
       if (session.user) {
         const clean = String(session.user).split('@')[0].replace(/[._-]/g, ' ');
         setUserName(clean.charAt(0).toUpperCase() + clean.slice(1));
@@ -241,7 +238,7 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
     fetchSettings();
   }, []);
 
-  const fetchWorkspaceData = useEffectEvent(async () => {
+  const fetchWorkspaceData = useCallback(async () => {
     try {
       const token = getAuthToken();
       if (!token) return;
@@ -258,7 +255,7 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
     } catch {
       // Keep UI functional if backend is unavailable.
     }
-  });
+  }, []);
 
   useEffect(() => {
     void fetchWorkspaceData();
@@ -266,7 +263,24 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
       void fetchWorkspaceData();
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchWorkspaceData]);
+
+  type PlagiarismResultCandidate = {
+    foundExact?: boolean;
+    foundNear?: boolean;
+    matchScore?: number;
+    url?: string;
+  };
+
+  type PlagiarismChunkCandidate = {
+    chunkText?: string;
+    results?: PlagiarismResultCandidate[];
+  };
+
+  type PlagiarismTopSource = {
+    url?: string;
+    strongestEvidenceScore?: number;
+  };
 
   const handleAnalyze = async (type: 'image' | 'text' | 'plagiarism', data: string | File) => {
     setResult(null);
@@ -307,12 +321,13 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
         const topSources = Array.isArray(json.topSources) ? json.topSources.slice(0, 4) : [];
         const matchedChunks = Array.isArray(json.matchedChunks)
           ? json.matchedChunks
-              .map((chunk: any) => {
-                const text = String(chunk?.chunkText ?? '').trim();
-                const results = Array.isArray(chunk?.results) ? chunk.results : [];
+              .map((chunk: unknown) => {
+                const typedChunk = chunk as PlagiarismChunkCandidate;
+                const text = String(typedChunk.chunkText ?? '').trim();
+                const results = Array.isArray(typedChunk.results) ? typedChunk.results : [];
                 const best = results
-                  .filter((item: any) => Boolean(item?.foundExact || item?.foundNear))
-                  .sort((a: any, b: any) => Number(b?.matchScore ?? 0) - Number(a?.matchScore ?? 0))[0];
+                  .filter((item) => Boolean(item?.foundExact || item?.foundNear))
+                  .sort((a, b) => Number(b?.matchScore ?? 0) - Number(a?.matchScore ?? 0))[0];
                 if (!text || !best) return null;
                 return {
                   text,
@@ -328,7 +343,10 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
           score: typeof json.overallScore === 'number' ? json.overallScore : 0,
           type,
           artifacts: topSources.length > 0
-            ? topSources.map((source: any) => `${source.url ?? 'Source'} (${Math.round((source.strongestEvidenceScore ?? 0) * 100)}%)`)
+            ? topSources.map((source: unknown) => {
+                const typedSource = source as PlagiarismTopSource;
+                return `${typedSource.url ?? 'Source'} (${Math.round((typedSource.strongestEvidenceScore ?? 0) * 100)}%)`;
+              })
             : ['No external matches found'],
           plagiarism: {
             originalText: String(data),
@@ -387,7 +405,7 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
       try {
         const sessionRaw = localStorage.getItem('fg_session');
         if (sessionRaw) {
-          const session = JSON.parse(sessionRaw);
+          const session = JSON.parse(sessionRaw) as StoredSession;
           session.username = nextName;
           session.user = session.user || session.email;
           localStorage.setItem('fg_session', JSON.stringify(session));

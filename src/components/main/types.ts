@@ -21,6 +21,17 @@ export interface ScanResult {
   };
 }
 
+export interface StoredSession {
+  token?: string | null;
+  access_token?: string | null;
+  expires_at?: number | null;
+  user?: string | null;
+  user_id?: number | string | null;
+  username?: string | null;
+  email?: string | null;
+  role?: 'user' | 'admin' | null;
+}
+
 export interface AnalyticsData {
   total_scans: number;
   threats_detected: number;

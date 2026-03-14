@@ -760,9 +760,6 @@ npm run lint
 # Format code
 npm run format
 
-# Test backend
-cd backend && pytest
-
 # Database migrations (if applicable)
 alembic upgrade head
 ```

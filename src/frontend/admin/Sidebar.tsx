@@ -7,7 +7,7 @@ import {
   Shield,
   Users,
 } from 'lucide-react';
-import { secondaryButtonClass } from './shared';
+import { secondaryButtonClass } from './sharedStyles';
 
 export type AdminView = 'dashboard' | 'users' | 'records' | 'reports' | 'activity';
 

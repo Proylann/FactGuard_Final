@@ -1,9 +1,11 @@
+import type { StoredSession } from './types';
+
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-export const getStoredSession = (): any | null => {
+export const getStoredSession = (): StoredSession | null => {
   try {
     const sessionRaw = localStorage.getItem('fg_session');
-    return sessionRaw ? JSON.parse(sessionRaw) : null;
+    return sessionRaw ? (JSON.parse(sessionRaw) as StoredSession) : null;
   } catch {
     return null;
   }
@@ -11,10 +13,9 @@ export const getStoredSession = (): any | null => {
 
 export const getAuthToken = (): string => {
   try {
-    const session: any = getStoredSession();
+    const session = getStoredSession();
     if (!session) return '';
-    let token: any = session?.access_token || session?.token || session?.session?.access_token || '';
-    if (token && typeof token === 'object') token = token.access_token || token.token || '';
+    const token = session.access_token || session.token || '';
     return typeof token === 'string' ? token : '';
   } catch {
     return '';

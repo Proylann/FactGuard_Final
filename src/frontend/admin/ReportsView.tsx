@@ -1,20 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Activity, CheckCircle2, Download, FileBarChart, XCircle } from 'lucide-react';
 import type { AdminReportSummary } from '../../components/main/types';
-import { cardClass, inputClass, secondaryButtonClass, primaryButtonClass, downloadBlob, formatDate } from './shared';
+import { cardClass, inputClass, secondaryButtonClass, primaryButtonClass, downloadBlob } from './sharedStyles';
 import { getAuthToken } from '../../components/main/helpers';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 type ExportFormat = 'pdf' | 'excel' | 'csv';
+const DEFAULT_REPORT_RANGE = (() => {
+  const now = new Date();
+  const from = new Date(now);
+  from.setDate(now.getDate() - 6);
+  return {
+    date_from: from.toISOString().slice(0, 10),
+    date_to: now.toISOString().slice(0, 10),
+  };
+})();
 
 const ReportsView = () => {
-  const [reportRange, setReportRange] = useState({
-    date_from: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    date_to: new Date().toISOString().slice(0, 10),
-  });
+  const [reportRange, setReportRange] = useState(DEFAULT_REPORT_RANGE);
   const [summary, setSummary] = useState<AdminReportSummary | null>(null);
 
-  const fetchSummary = async () => {
+  const fetchSummary = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
     const params = new URLSearchParams(reportRange);
@@ -24,9 +30,14 @@ const ReportsView = () => {
       });
       if (res.ok) setSummary(await res.json());
     } catch { /* ignore */ }
-  };
+  }, [reportRange]);
 
-  useEffect(() => { void fetchSummary(); }, [reportRange.date_from, reportRange.date_to]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void fetchSummary();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [fetchSummary]);
 
   const handleDownload = async (format: ExportFormat) => {
     const params = new URLSearchParams({

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Eye, PencilLine, Plus, Search, Trash2, UserCog, X } from 'lucide-react';
 import type { AdminUser } from '../../components/main/types';
-import { cardClass, inputClass, secondaryButtonClass, primaryButtonClass, dangerButtonClass, formatDate } from './shared';
+import { cardClass, inputClass, secondaryButtonClass, primaryButtonClass, dangerButtonClass, formatDate } from './sharedStyles';
 import UserEditModal, { type UserFormData } from './UserEditModal';
 import { getAuthToken } from '../../components/main/helpers';
 

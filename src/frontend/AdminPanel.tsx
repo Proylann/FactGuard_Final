@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getAuthToken, getStoredSession } from '../components/main/helpers';
 import type { AdminLog, AdminOverview, AdminScan, AdminUser } from '../components/main/types';
 import Sidebar, { type AdminView } from './admin/Sidebar';
@@ -20,16 +20,11 @@ const VIEW_TITLES: Record<AdminView, { title: string; subtitle: string }> = {
 
 const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
-  const [adminName, setAdminName] = useState('FactGuard Admin');
+  const [adminName] = useState(() => getStoredSession()?.username || 'FactGuard Admin');
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [records, setRecords] = useState<AdminScan[]>([]);
   const [logs, setLogs] = useState<AdminLog[]>([]);
-
-  useEffect(() => {
-    const session = getStoredSession();
-    if (session?.username) setAdminName(String(session.username));
-  }, []);
 
   useEffect(() => {
     const verifySession = async () => {
@@ -45,7 +40,7 @@ const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
     void verifySession();
   }, [onLogout]);
 
-  const fetchAdminData = useEffectEvent(async () => {
+  const fetchAdminData = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
     try {
@@ -60,16 +55,17 @@ const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
       if (recordsRes.ok) setRecords(await recordsRes.json());
       if (logsRes.ok) setLogs(await logsRes.json());
     } catch { /* keep panel usable */ }
-  });
-
-  useEffect(() => {
-    void fetchAdminData();
-    const interval = setInterval(() => void fetchAdminData(), 30000);
-    return () => clearInterval(interval);
   }, []);
 
-  const refreshData = useCallback(async () => {
-    await fetchAdminData();
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void fetchAdminData();
+    }, 0);
+    const interval = setInterval(() => void fetchAdminData(), 30000);
+    return () => {
+      window.clearTimeout(timeout);
+      clearInterval(interval);
+    };
   }, [fetchAdminData]);
 
   const { title, subtitle } = VIEW_TITLES[currentView];
@@ -95,8 +91,8 @@ const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
 
             {/* View Content */}
             {currentView === 'dashboard' && <DashboardView overview={overview} />}
-            {currentView === 'users' && <UserManagementView users={users} onRefresh={refreshData} />}
-            {currentView === 'records' && <RecordsView records={records} onRefresh={refreshData} />}
+            {currentView === 'users' && <UserManagementView users={users} onRefresh={fetchAdminData} />}
+            {currentView === 'records' && <RecordsView records={records} onRefresh={fetchAdminData} />}
             {currentView === 'reports' && <ReportsView />}
             {currentView === 'activity' && <ActivityLogView logs={logs} />}
           </section>

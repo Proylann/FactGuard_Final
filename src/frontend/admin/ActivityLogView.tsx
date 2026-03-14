@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import type { AdminLog } from '../../components/main/types';
-import { cardClass, inputClass, secondaryButtonClass, formatDate } from './shared';
+import { cardClass, inputClass, secondaryButtonClass, formatDate } from './sharedStyles';
 
 const ITEMS_PER_PAGE = 15;
 

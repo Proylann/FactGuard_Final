@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 // Make sure to import your logo correctly based on your project structure
 import logo from '../assets/logo.png'; 
+import type { StoredSession } from '../components/main/types';
 
 type IconProp = React.ComponentType<React.SVGProps<SVGSVGElement>>;
 type AuthMode = 'landing' | 'login' | 'register' | 'forgot' | 'mfa' | 'signupVerify' | 'reset';
@@ -114,7 +115,7 @@ const InputField: React.FC<InputFieldProps> = ({ icon: Icon, type = 'text', plac
   </div>
 );
 
-type AuthProps = { onAuthSuccess?: (session?: any) => void; onBack?: () => void };
+type AuthProps = { onAuthSuccess?: (session?: StoredSession) => void; onBack?: () => void };
 
 // --- MAIN COMPONENT ---
 
@@ -278,7 +279,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onBack }) => {
             user_id: 'admin',
             username: data.username || 'FactGuard Admin',
             email: data.email || formData.email,
-            role: 'admin',
+            role: 'admin' as const,
           };
           localStorage.setItem('fg_session', JSON.stringify(session));
           setFailedAttempts(0);
@@ -414,7 +415,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onBack }) => {
       });
 
       const responseText = await response.text();
-      let data = responseText ? JSON.parse(responseText) : {};
+      const data = responseText ? JSON.parse(responseText) : {};
 
       if (response.ok) {
         if (mode === 'register') {

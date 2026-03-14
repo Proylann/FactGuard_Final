@@ -1,6 +1,7 @@
 import { Activity } from 'lucide-react';
 import type { AdminOverview } from '../../components/main/types';
-import { cardClass, ChartBars, DonutLegend, formatDate } from './shared';
+import { ChartBars, DonutLegend } from './shared';
+import { cardClass, formatDate } from './sharedStyles';
 
 const DashboardView = ({ overview }: { overview: AdminOverview | null }) => (
   <div className="space-y-6">

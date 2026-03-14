@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Eye, PencilLine, Plus, Search, Trash2, X } from 'lucide-react';
 import type { AdminScan } from '../../components/main/types';
-import { cardClass, inputClass, secondaryButtonClass, primaryButtonClass, dangerButtonClass, formatDate, downloadBlob } from './shared';
+import { cardClass, inputClass, secondaryButtonClass, primaryButtonClass, dangerButtonClass, formatDate, downloadBlob } from './sharedStyles';
 import RecordEditModal, { type RecordFormData } from './RecordEditModal';
 import { getAuthToken } from '../../components/main/helpers';
 

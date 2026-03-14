@@ -3,6 +3,7 @@ import Auth from './frontend/Auth';
 import AdminPanel from './frontend/AdminPanel';
 import LandingPage from './frontend/LandingPage';
 import Main from './frontend/Main';
+import type { StoredSession } from './components/main/types';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
@@ -26,21 +27,21 @@ function App() {
       if (s) return 'dashboard';
       const saved = localStorage.getItem('authState') as 'auth' | 'landing' | 'dashboard' | null;
       return saved || 'auth';
-    } catch (e) {
+    } catch {
       return 'auth';
     }
   });
 
   // Save authState to localStorage whenever it changes (non-sensitive)
   useEffect(() => {
-    try { localStorage.setItem('authState', authState); } catch (e) { /* ignore */ }
+    try { localStorage.setItem('authState', authState); } catch { /* ignore */ }
   }, [authState]);
 
-  const handleAuthSuccess = (session?: any) => {
+  const handleAuthSuccess = (session?: StoredSession) => {
     try {
       if (session) localStorage.setItem('fg_session', JSON.stringify(session));
       else localStorage.setItem('fg_session', JSON.stringify({ authenticated: true }));
-    } catch (e) { /* ignore */ }
+    } catch { /* ignore */ }
     setSessionRole(session?.role === 'admin' ? 'admin' : 'user');
     setAuthState('dashboard');
   };
@@ -49,7 +50,7 @@ function App() {
     void (async () => {
       try {
         const raw = localStorage.getItem('fg_session');
-        const parsed = raw ? JSON.parse(raw) : null;
+        const parsed = raw ? (JSON.parse(raw) as StoredSession) : null;
         const token = parsed?.access_token || parsed?.token;
         if (token) {
           await fetch(`${API_BASE}/api/logout`, {
@@ -57,11 +58,11 @@ function App() {
             headers: { Authorization: `Bearer ${token}` },
           });
         }
-      } catch (e) {
+      } catch {
         // Ignore network/storage errors and continue with local logout.
       }
     })();
-    try { localStorage.removeItem('fg_session'); } catch (e) { /* ignore */ }
+    try { localStorage.removeItem('fg_session'); } catch { /* ignore */ }
     setSessionRole('user');
     setAuthState('landing');
   }, []);
