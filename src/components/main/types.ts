@@ -51,8 +51,13 @@ export interface AdminUser {
   user_id: number;
   username: string;
   email: string;
+  role: 'admin' | 'staff' | 'user';
+  is_active: boolean;
+  status: 'active' | 'inactive';
+  last_login: string;
   total_scans: number;
   flagged_scans: number;
+  created_at: string;
 }
 
 export interface AdminScan {
@@ -64,6 +69,7 @@ export interface AdminScan {
   media_type: string;
   confidence_score: number;
   is_synthetic: boolean;
+  review_status: 'pending' | 'approved' | 'rejected';
   artifacts: string[];
   created_at: string;
 }
@@ -82,16 +88,40 @@ export interface AdminLog {
 
 export interface AdminOverview {
   total_users: number;
-  total_scans: number;
-  synthetic_scans: number;
-  authentic_scans: number;
-  total_logs: number;
-  recent_users: Array<{
-    user_id: number;
-    username: string;
-    email: string;
-  }>;
-  recent_scans: AdminScan[];
+  total_records: number;
+  pending_requests: number;
+  approved_requests: number;
+  rejected_requests: number;
+  recent_users: AdminUser[];
+  recent_records: AdminScan[];
+  recent_activity: AdminLog[];
+  analytics: {
+    usage_labels: string[];
+    usage_counts: number[];
+    status_breakdown: {
+      pending: number;
+      approved: number;
+      rejected: number;
+    };
+    role_breakdown: {
+      admin: number;
+      staff: number;
+      user: number;
+    };
+  };
+}
+
+export interface AdminReportSummary {
+  date_from?: string | null;
+  date_to?: string | null;
+  total_records: number;
+  pending_requests: number;
+  approved_requests: number;
+  rejected_requests: number;
+  synthetic_records: number;
+  authentic_records: number;
+  average_confidence: number;
+  records: AdminScan[];
 }
 
 export type ViewId = 'dashboard' | 'analyze' | 'history' | 'reports' | 'docs' | 'settings';
