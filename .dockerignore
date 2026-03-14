@@ -1,0 +1,15 @@
+node_modules/
+dist/
+backend/venv/
+venv/
+.git/
+.gitignore
+.env
+.env.local
+.env.*.local
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+backend/ML_models/

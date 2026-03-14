@@ -25,6 +25,16 @@ FactGuard is a full-stack media integrity platform for detecting AI-generated te
 
 ## Local Development
 
+### Docker
+
+```bash
+copy .env.example .env
+docker compose up --build
+```
+
+The frontend runs on `http://127.0.0.1:5173`, the backend on `http://127.0.0.1:8000`, and PostgreSQL on `localhost:5432`.
+The copied `.env` already contains safe defaults for local Docker use, including admin credentials. SMTP and `SERPER_API_KEY` are optional; if left blank, the backend falls back to development behavior and logs OTP/reset values instead of emailing them.
+
 ### Frontend
 
 ```bash
