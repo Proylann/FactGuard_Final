@@ -342,6 +342,8 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
           id: `FG-${json.scan_id ?? Date.now()}`,
           score: typeof json.overallScore === 'number' ? json.overallScore : 0,
           type,
+          isSynthetic: typeof json.overallScore === 'number' ? json.overallScore >= 40 : false,
+          status: typeof json.overallScore === 'number' ? (json.overallScore >= 40 ? 'Synthetic' : 'Authentic') : undefined,
           artifacts: topSources.length > 0
             ? topSources.map((source: unknown) => {
                 const typedSource = source as PlagiarismTopSource;
@@ -359,6 +361,8 @@ const DashboardShell = ({ onLogout }: { onLogout: () => void }) => {
           id: `FG-${json.db_id}`,
           score: typeof parsed.confidence === 'number' ? parsed.confidence : (parsed.fake_score ?? 0),
           type,
+          isSynthetic: typeof parsed.is_synthetic === 'boolean' ? parsed.is_synthetic : undefined,
+          status: typeof parsed.status === 'string' ? parsed.status : undefined,
           artifacts: Array.isArray(parsed.artifacts) ? parsed.artifacts : ['No artifacts returned'],
         });
       }

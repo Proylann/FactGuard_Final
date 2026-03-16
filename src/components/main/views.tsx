@@ -279,6 +279,9 @@ export const AnalyzeView = ({ onAnalyze, analyzing, result, mode }: AnalyzeViewP
     () => (result?.plagiarism ? buildPlagiarismRanges(result.plagiarism.originalText, result.plagiarism.matchedChunks) : []),
     [result],
   );
+  const isSyntheticResult = mode === 'plagiarism'
+    ? (result?.isSynthetic ?? ((result?.score ?? 0) >= 40))
+    : (result?.isSynthetic ?? ((result?.score ?? 0) > 50));
 
   const handleSubmit = () => {
     if (mode === 'image' && selectedFile) onAnalyze('image', selectedFile);
@@ -432,7 +435,7 @@ export const AnalyzeView = ({ onAnalyze, analyzing, result, mode }: AnalyzeViewP
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h3 className="text-2xl font-black text-slate-900">
-                {mode === 'plagiarism' ? 'Plagiarism Scan Result' : result.score > 50 ? 'Synthetic Content Detected' : 'Likely Authentic'}
+                {mode === 'plagiarism' ? 'Plagiarism Scan Result' : isSyntheticResult ? 'Synthetic Content Detected' : 'Likely Authentic'}
               </h3>
               <p className="mt-1 text-sm font-semibold text-slate-500">Scan ID: {result.id}</p>
             </div>
@@ -443,7 +446,7 @@ export const AnalyzeView = ({ onAnalyze, analyzing, result, mode }: AnalyzeViewP
           </div>
           <div className="mt-5 rounded-full bg-slate-200 h-2 overflow-hidden">
             <div
-              className={`h-full rounded-full ${result.score > 50 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+              className={`h-full rounded-full ${isSyntheticResult ? 'bg-rose-500' : 'bg-emerald-500'}`}
               style={{ width: `${Math.max(5, Math.min(result.score, 100))}%` }}
             />
           </div>

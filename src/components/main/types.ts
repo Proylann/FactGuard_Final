@@ -11,6 +11,8 @@ export interface ScanResult {
   score: number;
   type: string;
   artifacts: string[];
+  isSynthetic?: boolean;
+  status?: string;
   plagiarism?: {
     originalText: string;
     matchedChunks: Array<{
