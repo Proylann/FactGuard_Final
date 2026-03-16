@@ -5,6 +5,7 @@ from sqlalchemy import text
 from .config import settings
 from .db import engine, Base
 from .routers.api import router as api_router
+from .routers.common import deepfake_service, text_detector
 app = FastAPI(title="FactGuard API")
 
 cors_origins = list(
@@ -49,6 +50,11 @@ def startup():
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ NULL"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
             conn.execute(text("ALTER TABLE scan_results ADD COLUMN IF NOT EXISTS review_status VARCHAR(20) NOT NULL DEFAULT 'pending'"))
+        text_detector.ensure_model_loaded()
+        deepfake_service.ensure_model_loaded()
         print("Database connection successful. Tables created.")
+        print(f"AI text model ready: {text_detector.get_status()}")
+        print(f"Deepfake model ready: {deepfake_service.get_status()}")
     except Exception as e:
         print(f"Error connecting to database: {e}")
+        raise

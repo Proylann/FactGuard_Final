@@ -129,18 +129,24 @@ class WebPlagiarismScanner:
         matched_chunks: list[dict[str, Any]] = []
 
         for chunk in chunks:
-            query_used = f'"{chunk}"'
-            search_results, calls = self._serper_search(
-                query_used,
-                num_results,
-                gl,
-                hl,
-                rate_limit_per_second,
-                max_retries,
-                search_timeout_seconds,
-                notes,
-            )
-            api_calls_used += calls
+            search_results: list[dict[str, str]] = []
+            query_used = ""
+            for candidate_query in self._build_search_queries(chunk):
+                query_used = candidate_query
+                search_results, calls = self._serper_search(
+                    candidate_query,
+                    num_results,
+                    gl,
+                    hl,
+                    rate_limit_per_second,
+                    max_retries,
+                    search_timeout_seconds,
+                    notes,
+                )
+                api_calls_used += calls
+                if search_results:
+                    break
+
             candidate_results: list[dict[str, Any]] = []
             best_chunk_score = 0.0
 
@@ -199,7 +205,10 @@ class WebPlagiarismScanner:
             if any(item["foundExact"] or item["foundNear"] for item in candidate_results):
                 matched_chunks.append({"chunkText": chunk, "queryUsed": query_used, "results": candidate_results})
 
-        overall_score = int(round((sum(chunk_scores) / max(1, len(chunk_scores))) * 100))
+        average_chunk_score = (sum(chunk_scores) / max(1, len(chunk_scores))) * 100
+        coverage_ratio = self._matched_input_coverage(inputText, matched_chunks)
+        coverage_score = coverage_ratio * 100
+        overall_score = int(round(max(average_chunk_score, coverage_score)))
         risk_level = self._risk_level(overall_score)
 
         total_score = sum(s["scoreTotal"] for s in source_aggregate.values()) or 0.0
@@ -230,6 +239,8 @@ class WebPlagiarismScanner:
                 "apiCallsUsed": api_calls_used,
                 "urlsFetched": urls_fetched,
                 "verifiedMatches": verified_matches,
+                "coveragePercent": round(coverage_score, 2),
+                "averageChunkScore": round(average_chunk_score, 2),
                 "fromCache": False,
             },
             "notes": notes,
@@ -304,6 +315,61 @@ class WebPlagiarismScanner:
             return [fallback]
 
         return selected
+
+    def _build_search_queries(self, chunk: str) -> list[str]:
+        cleaned = re.sub(r"\s+", " ", chunk.strip())
+        if not cleaned:
+            return []
+
+        queries: list[str] = [f'"{cleaned}"']
+        words = cleaned.split()
+
+        if len(words) > 18:
+            mid = len(words) // 2
+            window = min(18, len(words))
+            start = max(0, mid - window // 2)
+            queries.append(f'"{" ".join(words[start : start + window])}"')
+
+        keywords = self._keyword_query(cleaned)
+        if keywords:
+            queries.append(keywords)
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for query in queries:
+            normalized = query.strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(query)
+        return deduped
+
+    def _keyword_query(self, text: str) -> str:
+        normalized = self._normalize(text)
+        if not normalized:
+            return ""
+
+        words = normalized.split()
+        if not words:
+            return ""
+
+        numeric_tokens = [word for word in words if any(ch.isdigit() for ch in word)]
+        long_tokens = [word for word in words if len(word) >= 6]
+        selected: list[str] = []
+        for token in numeric_tokens + long_tokens:
+            if token not in selected:
+                selected.append(token)
+            if len(selected) >= 12:
+                break
+
+        if len(selected) < 5:
+            for token in words:
+                if token not in selected:
+                    selected.append(token)
+                if len(selected) >= 8:
+                    break
+
+        return " ".join(selected)
 
     def _serper_search(
         self,
@@ -580,6 +646,42 @@ class WebPlagiarismScanner:
         if overall_score >= 40:
             return "Medium"
         return "Low"
+
+    def _matched_input_coverage(self, input_text: str, matched_chunks: list[dict[str, Any]]) -> float:
+        source_text = re.sub(r"\s+", " ", input_text.strip())
+        if not source_text:
+            return 0.0
+
+        lower_source = source_text.lower()
+        ranges: list[tuple[int, int]] = []
+
+        for chunk in matched_chunks:
+            chunk_text = re.sub(r"\s+", " ", str(chunk.get("chunkText") or "").strip())
+            if len(chunk_text) < 8:
+                continue
+
+            needle = chunk_text.lower()
+            start = 0
+            while start < len(lower_source):
+                idx = lower_source.find(needle, start)
+                if idx == -1:
+                    break
+                ranges.append((idx, idx + len(chunk_text)))
+                start = idx + max(1, len(chunk_text) // 3)
+
+        if not ranges:
+            return 0.0
+
+        ranges.sort(key=lambda item: item[0])
+        merged: list[list[int]] = []
+        for start, end in ranges:
+            if not merged or start > merged[-1][1]:
+                merged.append([start, end])
+            else:
+                merged[-1][1] = max(merged[-1][1], end)
+
+        covered_chars = sum(end - start for start, end in merged)
+        return max(0.0, min(1.0, covered_chars / max(1, len(source_text))))
 
 
 def checkPlagiarismWeb(inputText: str, options: dict[str, Any] | None = None) -> dict[str, Any]:

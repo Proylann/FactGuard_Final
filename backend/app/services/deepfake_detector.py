@@ -1,24 +1,23 @@
 import os
 import io
-import json
 import base64
 from typing import Any, Union
-from pathlib import Path
 
 import cv2
 import numpy as np
 from PIL import Image
+import torch
 
 # Transformers imports for Vision Transformer model
 try:
     from transformers import (
-        AutoFeatureExtractor,
+        AutoImageProcessor,
         AutoModelForImageClassification,
         pipeline,
     )
 except ImportError:
     # Graceful fallback if transformers not available
-    AutoFeatureExtractor = None
+    AutoImageProcessor = None
     AutoModelForImageClassification = None
     pipeline = None
 
@@ -34,6 +33,7 @@ class DeepfakeDetector:
     
     _instance = None
     _model_loaded = False
+    _decision_threshold = 0.60
     
     def __new__(cls):
         """Implement singleton pattern - only one instance of detector"""
@@ -47,8 +47,9 @@ class DeepfakeDetector:
         self.model_path = self._resolve_model_path()
         self.device = "cuda" if self._is_cuda_available() else "cpu"
         self.pipeline = None
-        self.feature_extractor = None
+        self.image_processor = None
         self.model = None
+        self.load_error = None
         
         # Load model lazily on first use
         self._load_model()
@@ -81,11 +82,13 @@ class DeepfakeDetector:
     def _load_model(self) -> None:
         """Load Vision Transformer model for deepfake detection"""
         if self._model_loaded or pipeline is None:
+            if pipeline is None and self.load_error is None:
+                self.load_error = "transformers is not installed"
             return
         
         try:
-            # Load feature extractor and model
-            self.feature_extractor = AutoFeatureExtractor.from_pretrained(
+            # Newer transformers expects an image processor for ViT models.
+            self.image_processor = AutoImageProcessor.from_pretrained(
                 self.model_path,
                 trust_remote_code=True,
             )
@@ -99,14 +102,31 @@ class DeepfakeDetector:
             self.pipeline = pipeline(
                 task="image-classification",
                 model=self.model,
-                feature_extractor=self.feature_extractor,
+                image_processor=self.image_processor,
                 device=0 if self.device == "cuda" else -1,
             )
             
             self._model_loaded = True
+            self.load_error = None
         except Exception as e:
-            print(f"Warning: Could not load deepfake detection model: {e}")
+            self.load_error = str(e)
+            print(f"Warning: Could not load deepfake detection model: {self.load_error}")
             self._model_loaded = False
+
+    def ensure_model_loaded(self) -> None:
+        """Load the model and raise a hard error when unavailable."""
+        if not self._model_loaded or self.pipeline is None:
+            self._load_model()
+        if not self._model_loaded or self.pipeline is None:
+            raise RuntimeError(self.load_error or "Deepfake model is unavailable")
+
+    def get_status(self) -> dict[str, Any]:
+        return {
+            "loaded": bool(self._model_loaded and self.pipeline is not None),
+            "model_path": self.model_path,
+            "device": self.device,
+            "error": self.load_error,
+        }
     
     def analyze(self, image_input: Union[str, bytes, np.ndarray]) -> dict[str, Any]:
         """
@@ -129,15 +149,18 @@ class DeepfakeDetector:
             if pil_image is None:
                 return self._error_response("Could not load image")
             
-            # If no model loaded, return mock result
-            if not self._model_loaded or self.pipeline is None:
-                return self._mock_analyze(pil_image)
+            self.ensure_model_loaded()
             
-            # Run inference
-            results = self.pipeline(pil_image, top_k=2)
-            
+            # Run inference against the underlying model so we can calibrate
+            # probabilities even when the saved model has generic LABEL_0/LABEL_1 ids.
+            encoded = self.image_processor(images=pil_image, return_tensors="pt")
+            encoded = {key: value.to(self.device) for key, value in encoded.items()}
+            with torch.no_grad():
+                logits = self.model(**encoded).logits
+                probabilities = torch.softmax(logits, dim=-1)[0].detach().cpu().numpy()
+
             # Process results
-            return self._process_classification_results(results, pil_image)
+            return self._process_classification_results(probabilities.tolist(), pil_image)
             
         except Exception as e:
             return self._error_response(f"Analysis error: {str(e)}")
@@ -270,45 +293,88 @@ class DeepfakeDetector:
     
     def _process_classification_results(
         self,
-        results: list[dict],
+        probabilities: list[float],
         image: Image.Image,
     ) -> dict[str, Any]:
-        """Process transformer model classification results"""
-        
-        # Determine confidence and status
-        # Results typically ordered by score descending
-        synthetic_candidates = [r for r in results if "synthetic" in r.get("label", "").lower()]
-        deepfake_candidates = [r for r in results if "deepfake" in r.get("label", "").lower()]
-        fake_candidates = [r for r in results if "fake" in r.get("label", "").lower()]
-        
-        # Pick highest scoring fake/synthetic candidate
-        top_fake = None
-        if synthetic_candidates:
-            top_fake = max(synthetic_candidates, key=lambda x: x.get("score", 0))
-        elif deepfake_candidates:
-            top_fake = max(deepfake_candidates, key=lambda x: x.get("score", 0))
-        elif fake_candidates:
-            top_fake = max(fake_candidates, key=lambda x: x.get("score", 0))
-        
-        # If ambiguous or no clear synthetic label, use probability heuristic
-        if top_fake is None and results:
-            # Use first result (highest score) if it's above threshold
-            top_result = results[0]
-            confidence_score = float(top_result.get("score", 0)) * 100
-        else:
-            confidence_score = float(top_fake.get("score", 0.5)) * 100 if top_fake else 50.0
-        
-        # Detect artifacts based on image analysis
+        """Process model probabilities into a calibrated decision."""
+        model_output = self._build_model_output(probabilities)
+        synthetic_probability = self._resolve_synthetic_probability(model_output)
+        artifact_count = self._artifact_signal_count(image)
+
+        # Small confidence nudges from artifact signals help when the classifier
+        # is uncertain, but we keep the model probability as the main driver.
+        if 0.45 <= synthetic_probability <= 0.75:
+            synthetic_probability = min(0.95, max(0.05, synthetic_probability + (artifact_count * 0.03)))
+        elif synthetic_probability < 0.40 and artifact_count == 0:
+            synthetic_probability = max(0.02, synthetic_probability - 0.02)
+
+        confidence_score = synthetic_probability * 100
         artifacts = self._detect_artifacts(image, confidence_score)
-        
+        is_synthetic = synthetic_probability >= self._decision_threshold
+
         return {
             "confidence": round(confidence_score, 2),
-            "status": "synthetic" if confidence_score > 50 else "authentic",
-            "is_synthetic": confidence_score > 50,
+            "status": "synthetic" if is_synthetic else "authentic",
+            "is_synthetic": is_synthetic,
             "artifacts": artifacts,
             "model": "ViT-Deepfake-Detector-v1",
-            "model_output": results if len(results) <= 2 else results[:2],  # Include top predictions
+            "model_output": model_output,
         }
+
+    def _build_model_output(self, probabilities: list[float]) -> list[dict[str, Any]]:
+        id2label = getattr(self.model.config, "id2label", None) or {}
+        outputs = []
+        for idx, score in enumerate(probabilities):
+            raw_label = str(id2label.get(idx, f"LABEL_{idx}"))
+            outputs.append(
+                {
+                    "label": self._normalize_label(raw_label, idx),
+                    "raw_label": raw_label,
+                    "score": float(score),
+                    "index": idx,
+                }
+            )
+        outputs.sort(key=lambda item: item["score"], reverse=True)
+        return outputs[: min(3, len(outputs))]
+
+    def _normalize_label(self, label: str, index: int) -> str:
+        lowered = label.strip().lower()
+        if any(token in lowered for token in ("synthetic", "deepfake", "fake", "real", "authentic")):
+            return label
+
+        # This local ViT checkpoint is a binary classifier saved without id2label.
+        # We treat LABEL_1 as synthetic and LABEL_0 as authentic as the default mapping.
+        if index == 1:
+            return "synthetic"
+        if index == 0:
+            return "authentic"
+        return label
+
+    def _resolve_synthetic_probability(self, model_output: list[dict[str, Any]]) -> float:
+        synthetic_scores = [
+            float(item.get("score", 0.0))
+            for item in model_output
+            if any(token in str(item.get("label", "")).lower() for token in ("synthetic", "deepfake", "fake"))
+        ]
+        if synthetic_scores:
+            return max(synthetic_scores)
+
+        for item in model_output:
+            if int(item.get("index", -1)) == 1:
+                return float(item.get("score", 0.0))
+
+        return float(model_output[0].get("score", 0.0)) if model_output else 0.0
+
+    def _artifact_signal_count(self, image: Image.Image) -> int:
+        img_array = np.array(image)
+        signals = [
+            self._has_blending_blur(img_array),
+            self._has_color_inconsistency(img_array),
+            self._has_lighting_anomaly(img_array),
+            self._has_compression_noise(img_array),
+            self._has_eye_anomalies(img_array),
+        ]
+        return sum(1 for signal in signals if signal)
     
     def _detect_artifacts(self, image: Image.Image, confidence: float) -> list[str]:
         """Detect specific artifacts that suggest deepfake/synthetic content"""
@@ -417,16 +483,6 @@ class DeepfakeDetector:
             return edge_density > 0.15
         except:
             return False
-    
-    def _mock_analyze(self, image: Image.Image) -> dict[str, Any]:
-        """Return mock analysis when model unavailable"""
-        return {
-            "confidence": 42.5,
-            "status": "authentic",
-            "is_synthetic": False,
-            "artifacts": ["Model Not Loaded"],
-            "model": "ViT-Deepfake-Detector-v1 (Mock)",
-        }
     
     def _error_response(self, error_msg: str) -> dict[str, Any]:
         """Return error response"""
